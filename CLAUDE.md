@@ -2,7 +2,7 @@
 
 Chrome-Erweiterung (Manifest V3, Vanilla JS, kein Build-Schritt) für einen deutschen Vinted-Reseller:
 lädt Käufe, Verkäufe und eigene Angebote von vinted.de und zeigt sie als Reseller-Dashboard
-(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.5).
+(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.6).
 Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene `CLAUDE.md`).
 
 ## Zusammenarbeit mit dem Nutzer (wichtig)
@@ -18,7 +18,7 @@ Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene 
 | Datei | Rolle |
 | --- | --- |
 | `manifest.json` | MV3. Rechte: scripting, storage, unlimitedStorage, cookies, alarms, declarativeNetRequestWithHostAccess; Host: `https://www.vinted.de/*` |
-| `webapp-bridge.js` | Content-Script nur auf `http://localhost:3000/*` (Web-App `../vinted-webapp`): setzt `<html data-vinted-ext>`, beantwortet `postMessage` `request-token` (optional `fresh`) nur mit `access_token_web`, `status` (Version + angemeldet) und `token-match` (SHA-256-Vergleich) (über `background.js` → `webappToken`, prüft Absender-Origin gegen `WEBAPP_ORIGINS`). Neue Web-App-Adresse ⇒ in Manifest **und** `WEBAPP_ORIGINS` eintragen. |
+| `webapp-bridge.js` | Content-Script nur auf `http://localhost:3000/*`, `https://jucreative.de/*`, `https://www.jucreative.de/*` (Web-App `../vinted-webapp`): setzt `<html data-vinted-ext>`, beantwortet `postMessage` `request-token` (optional `fresh`) nur mit `access_token_web`, `status` (Version + angemeldet) und `token-match` (SHA-256-Vergleich) (über `background.js` → `webappToken`, prüft Absender-Origin gegen `WEBAPP_ORIGINS`). Neue Web-App-Adresse ⇒ in Manifest **und** `WEBAPP_ORIGINS` eintragen. |
 | `background.js` | Service Worker: Verbindung zu Vinted, Sync (quick/full), Backoff, Postfach-Proxy, Detail-Laden, 10-min-Alarm |
 | `shared.js` | **Gesamte Rechenlogik** + Storage-Helfer, von Popup und Dashboard per `<script>` geladen (globale Funktionen). Kategorie/Marke (`categoryOf`, `categoryInfo`, `brandOf`, Wortliste `CATEGORY_WORDS`) erkennen **ganze Wörter** mit Punkten statt Wortstücken (seit 2026-10-14, gespiegelt aus der Web-App, siehe dort `claude-anleitung/023-…`); der zweite Parameter (Vinted-Kategoriepfad/-Marke) bleibt hier leer |
 | `dashboard.html/.js/.css` | Großes Dashboard (Übersicht, Angebote, Käufe, Postfach, Betriebskosten, Dialoge) |
@@ -114,5 +114,6 @@ CSRF ja/nein, Status `POST`, Restminuten vorher/nachher – nie Token-Werte) in 
 (`refreshSession(..., { tab: true })`); die eigene Automatik öffnet weiterhin nie Tabs. Schwelle 15 min ·
 2.8.5 Diagnose zeigte: POST im Tab = 200, aber kein `access_token_web` lesbar → `vintedCookies()` liest auch partitionierte
 Cookies (`partitionKey: {}`), `cookieValue` nimmt den mit spätester Ablaufzeit, `tokenFromJson` übernimmt einen Zugang aus
-der Antwort (`bodyAccessToken`); Diagnose mit Cookie-Namen/-Eigenschaften (`cookieInventory`, nie Werte) und Antwort-Feldnamen.
+der Antwort (`bodyAccessToken`); Diagnose mit Cookie-Namen/-Eigenschaften (`cookieInventory`, nie Werte) und Antwort-Feldnamen ·
+2.8.6 Brücke auch auf `https://jucreative.de` und `https://www.jucreative.de` (Manifest + `WEBAPP_ORIGINS`).
 Bei neuen Versionen: `manifest.json` hochzählen, `LIESMICH.txt` „Neu in …“ oben ergänzen.

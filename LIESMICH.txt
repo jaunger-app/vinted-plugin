@@ -1,5 +1,9 @@
-Vinted Käufe & Reseller-Übersicht (Version 2.8.5 – Testversion)
+Vinted Käufe & Reseller-Übersicht (Version 2.8.6 – Testversion)
 =============================================================
+
+Neu in 2.8.6
+- Web-App: Die Erweiterung arbeitet jetzt auch mit der Online-Adresse
+  https://jucreative.de (und www.jucreative.de), nicht nur mit localhost:3000.
 
 Neu in 2.8.5
 - Web-App-Verbindung: Der Zugang wird jetzt auch gefunden, wenn Chrome den

@@ -1,4 +1,4 @@
-// Brücke zur Web-App (vinted-webapp, läuft auf http://localhost:3000).
+// Brücke zur Web-App (vinted-webapp, läuft auf http://localhost:3000 bzw. https://jucreative.de).
 // Die Seite fragt per window.postMessage nach einem frischen Vinted-Zugangs-Token; der Hintergrund
 // liest ihn mit chrome.cookies (HttpOnly, für die Seite unsichtbar) und wir reichen ihn zurück.
 (() => {

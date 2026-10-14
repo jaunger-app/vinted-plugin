@@ -125,7 +125,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // denselben, loggen sie sich gegenseitig aus. So erneuert nur der Browser seine eigene Sitzung.
 //   fresh = false: nur erneuern, wenn der Zugangs-Token fehlt oder in < 30 min abläuft
 //   fresh = true:  der Server hat den Token abgelehnt → Browser-Sitzung jetzt erneuern
-const WEBAPP_ORIGINS = ["http://localhost:3000"];
+const WEBAPP_ORIGINS = ["http://localhost:3000", "https://jucreative.de", "https://www.jucreative.de"];
 const ACCESS_MIN_LEFT_MS = 15 * 60 * 1000;
 function jwtExpiry(token) {
   try {
