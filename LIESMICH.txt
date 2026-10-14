@@ -1,0 +1,230 @@
+Vinted Käufe & Reseller-Übersicht (Version 2.8.5 – Testversion)
+=============================================================
+
+Neu in 2.8.5
+- Web-App-Verbindung: Der Zugang wird jetzt auch gefunden, wenn Chrome den
+  Cookie „partitioniert“ speichert oder Vinted ihn in der Antwort liefert.
+  „Verbindung prüfen“ zeigt zusätzlich die Namen der vinted.de-Cookies (ohne Werte).
+
+Neu in 2.8.4
+- Verbinden mit der Web-App repariert: Chrome schickt bei Anfragen aus dem
+  Hintergrund die Login-Cookies von vinted.de nicht mit. Die Anmeldung wird
+  deshalb in einem vinted.de-Tab erneuert – in einem offenen Tab oder, falls
+  keiner offen ist, in einem kurz im Hintergrund geöffneten Tab, der sich
+  danach wieder schließt (etwa einmal pro Stunde, solange die Web-App läuft).
+
+Neu in 2.8.3
+- Web-App: „Verbindung prüfen“ zeigt Schritt für Schritt, woran das Verbinden
+  scheitert (nur Status-Codes, keine Tokens).
+
+Neu in 2.8.2
+- Anmeldung erneuern repariert: Vinted erneuert seit Oktober 2026 über die
+  Seite „session-refresh“. Die Erweiterung macht das jetzt genauso – dadurch
+  kein falsches „nicht angemeldet“ mehr beim Verbinden der Web-App, und auch
+  die automatische Aktualisierung bleibt angemeldet.
+
+Neu in 2.8.1
+- Web-App: Checkliste beim Verbinden (Erweiterung aktuell? Auf vinted.de
+  angemeldet?) und eine Sperre, damit der Token des normalen Browsers nicht
+  als „eigene Sitzung“ eingefügt werden kann (sonst wird man ausgeloggt).
+  Verglichen wird nur ein Fingerabdruck, der Token verlässt die Erweiterung nie.
+
+Neu in 2.8.0
+- Web-App: Man wird bei Vinted nicht mehr ausgeloggt. Die Erweiterung gibt der
+  Web-App nur noch einen frischen Zugangs-Token (nicht mehr den Refresh-Token).
+  Die Anmeldung erneuert allein der Browser, die Web-App fragt in Abständen nach.
+
+Neu in 2.7.2
+- Unter Käufe ist der Filter „🔒 Privat“ jetzt immer sichtbar (auch mit 0),
+  damit man die Kategorie findet.
+
+Neu in 2.7.1
+- Die Web-App erkennt die Erweiterung zuverlässiger, und die Übergabe
+  enthält jetzt auch den Zugangs-Token (Laden klappt sofort).
+
+Neu in 2.7
+- Verbindung zur Web-App (http://localhost:3000): Dort reicht ein Klick auf
+  „Mit Vinted verbinden“ – die Erweiterung übergibt deine Vinted-Anmeldung,
+  ohne dass du den Token kopieren musst. Nur diese Adresse darf fragen.
+
+Neu in 2.6
+- Kein Vinted-Fenster mehr: Die Daten werden direkt im Hintergrund der
+  Erweiterung abgefragt (deine Login-Cookies gehen dank der vinted.de-
+  Berechtigung mit). Ein abgelaufener Login wird unsichtbar erneuert.
+- Automatisch: jede Minute bei offener Übersicht, sonst alle 10 Minuten,
+  solange Chrome läuft (Popup ist dadurch auch ohne Übersicht aktuell).
+- Verlangt Vinted eine Sicherheitsprüfung, wird ein bereits offener
+  vinted.de-Tab mitbenutzt. Automatisch wird nie etwas geöffnet; nur nach
+  einem Klick auf „Jetzt aktualisieren“ öffnet sich vinted.de als normaler
+  Tab zum Bestätigen. Steht in der Live-Anzeige „über deinen Vinted-Tab“,
+  war die direkte Verbindung blockiert und dein Tab hat ausgeholfen.
+- Nachrichten senden: über einen offenen vinted.de-Tab, sonst direkt.
+- Neue Berechtigungen „alarms“ (Takt im Hintergrund) und
+  „declarativeNetRequestWithHostAccess“ (Anfragen tragen vinted.de als
+  Herkunft). Chrome zeigt dafür keine neue Warnung.
+
+Neu in 2.5
+- Eigene Käufe: In „Käufe“ über „+ Eigener Kauf“ Käufe von anderen
+  Seiten eintragen (Kleinanzeigen, eBay, Flohmarkt, Laden oder eine
+  eigene Angabe): Titel, Preis, Datum, Plattform, Status (Standard
+  „Im Lager“), optional Zusatzkosten, Notiz und Foto (wird verkleinert
+  und nur lokal gespeichert). Sie zählen ganz normal mit und werden
+  einem späteren Vinted-Verkauf automatisch zugeordnet. Bearbeiten und
+  Löschen über „Eintrag bearbeiten“ in der Detailansicht.
+- Privat: Haken „Privat“ im Formular und in der Detailansicht jedes
+  Kaufs (auch Vinted-Käufe). Private Käufe stehen nur unter dem Filter
+  „🔒 Privat“ (für das gewählte Jahr), nicht unter „Alle“, und zählen
+  nirgends: kein Umsatz, keine Ausgaben, kein Gewinn, kein Lager, keine
+  Betriebskosten, nicht in Übersicht, Export oder Popup.
+- Neue Berechtigung „unlimitedStorage“, damit genug Platz für Fotos da
+  ist (Chrome zeigt dafür keine Warnung, alles bleibt lokal).
+- „Daten löschen“ (Test) entfernt jetzt auch die eigenen Käufe.
+
+Neu in 2.4
+- Geschäftsjahr: Alles wird pro Kalenderjahr (1.1.–31.12.) gerechnet.
+  Links oben „Geschäftsjahr“ – Standard ist immer das laufende Jahr,
+  ältere Jahre lassen sich auswählen und werden nie mit dem aktuellen
+  vermischt. Zeiträume: 7 T / 30 T / 90 T (am 1.1. abgeschnitten) und
+  „Jahr“ (Januar–Dezember).
+  Ein Kauf zählt im Kaufjahr, ein Verkauf (mit Gewinn) im Verkaufsjahr.
+  Unverkaufte Ware aus Vorjahren bleibt im Lager sichtbar; was im Vorjahr
+  schon abgeschlossen oder erstattet war, taucht im neuen Jahr nicht auf.
+- Betriebskosten (neuer Punkt unter „Postfach“):
+  · Monatlich, z. B. 100 Versandtüten für 15 €: jeder Verkauf trägt
+    0,15 €. Ohne Stückzahl (z. B. ein Abo) wird der Monatsbetrag auf die
+    Verkäufe dieses Monats verteilt. Nicht verbrauchter Vorrat und Monate
+    ohne Verkauf kosten nichts. Start- und optional Endmonat wählbar.
+  · Einmalig, z. B. Drucker für 120 €: jeder Verkauf ab dem Kaufdatum
+    zahlt einen festen Betrag ab (z. B. 2 €), bis er abbezahlt ist –
+    dann steht er auf „Abbezahlt am …“. Mehrere offene Anschaffungen
+    werden gleichzeitig abbezahlt.
+  · Gilt für alle Verkäufe, auch für solche ohne zugeordneten Kauf.
+  · Änderungen wirken sofort und rückwirkend. „Daten löschen“ entfernt
+    die Betriebskosten nicht.
+- Übersicht: neue Kachel „Betriebskosten“; „Gewinn“ ist jetzt nach
+  Kosten (darunter „vor Kosten …“). Auch Liste, Bestenliste, Detail,
+  Export und Popup zeigen den Gewinn nach Kosten. Der Export enthält nur
+  das gewählte Geschäftsjahr.
+
+Neu in 2.3
+- Automatische Aktualisierung: Solange die große Übersicht offen ist,
+  gleicht die Erweiterung jede Minute mit Vinted ab (im Hintergrund-Tab
+  alle 5 Minuten). Dabei wird nur die jeweils erste Seite (die neuesten 20)
+  von Käufen, Verkäufen und Angeboten geholt; alle 15 Minuten ein
+  vollständiger Abgleich (seit 2.6 ohne Fenster, siehe oben).
+  Links unten: Live-Anzeige mit „Pause“/„Weiter“.
+- Schutz vor Sperren: Meldet Vinted „zu viele Anfragen“ (429), wartet die
+  Erweiterung 2, 4, 8, 16, dann 30 Minuten. Bei „nicht angemeldet“ oder
+  einer Sicherheitsprüfung pausiert die Automatik und zeigt einen Hinweis;
+  „Jetzt aktualisieren“ öffnet dann das Fenster zum Abschließen.
+- Hell / Dunkel / System: Umschalter links unten, gilt auch fürs Popup.
+- Übersicht neu: Zeitraum 7 T / 30 T / 90 T / 12 M. Die fünf Kacheln
+  (Umsatz, Gewinn, Verkauft, Gekauft, Ausgaben) zeigen die Summe des
+  Zeitraums und wählen die Kennzahl des Diagramms. Ein Klick auf einen
+  Balken zeigt oben die Zahlen genau dieses Tages (bzw. Monats); erneuter
+  Klick, Escape oder „× Auswahl aufheben“ geht zurück.
+- Verkäufe kommen jetzt automatisch aus Vinted (stornierte/erstattete
+  zählen nicht). Jeder Verkauf wird per Titel dem passenden Kauf
+  zugeordnet, daraus ergibt sich der Gewinn. In der Detailansicht eines
+  Kaufs kannst du die Zuordnung ändern oder aufheben („Kein
+  Vinted-Verkauf“). Verkäufe ohne zugeordneten Kauf zählen zum Umsatz,
+  aber nicht zum Gewinn – darauf weist die Übersicht hin.
+- Behoben: Das Diagramm war um einen Tag verschoben (UTC statt deutscher
+  Zeit), Käufe/Verkäufe von heute fehlten. Negative Gewinne werden im
+  Liniendiagramm jetzt unter der Nulllinie gezeichnet.
+
+Installieren
+1. Diesen Ordner entpacken (falls noch als ZIP).
+2. In Chrome chrome://extensions öffnen.
+3. Oben rechts den Entwicklermodus einschalten.
+4. "Entpackte Erweiterung laden" klicken und diesen Ordner auswählen.
+   Wer eine ältere Version hat: diese entfernen oder den neuen Ordner
+   an dieselbe Stelle kopieren und auf "Neu laden" klicken.
+5. Über das Puzzle-Symbol in der Symbolleiste die Erweiterung anpinnen.
+   Chrome fragt wegen der Cookie-Berechtigung einmalig nach.
+
+Laden
+- Vorher in diesem Chrome-Profil bei vinted.de angemeldet sein.
+- "Jetzt aktualisieren" lädt im Hintergrund deine KÄUFE und VERKÄUFE
+  (unsichtbar im Hintergrund). Das kleine Fenster darfst du dabei
+  schließen. Solange geladen wird, zeigt das Symbol "…".
+- Bei einer Sicherheitsprüfung öffnet „Jetzt aktualisieren“ vinted.de als
+  normalen Tab – dort bestätigen, dann läuft es automatisch weiter. "!" am Symbol = Fehler (Details im
+  kleinen Fenster).
+
+Reseller-Funktionen (große Übersicht)
+- Oben: Gewinn realisiert, Investiert, im Lager gebundenes Kapital,
+  mit Verkaufsquote, Ø Flip-Dauer und Rendite.
+- Klick auf einen Artikel öffnet die Detailansicht. Dort kannst du:
+  Status setzen (Im Lager / Gelistet / Verkauft / Problem), Verkaufspreis und
+  Zusatzkosten eintragen, ein Verkaufsdatum und eine Notiz hinterlegen.
+  Gewinn und Rendite werden sofort berechnet.
+- Der passende Vinted-Verkauf wird automatisch zugeordnet (siehe oben);
+  Verkaufspreis und -datum kommen dann von Vinted.
+- Deine Eingaben werden lokal gespeichert und überstehen ein Neuladen.
+
+Lagerstatus
+- Sechs Status: Unterwegs, Im Lager, Gelistet, Verkauft, Problem, Erstattet.
+- "Unterwegs" (noch nicht bei dir) und "Erstattet" setzt die Erweiterung
+  automatisch aus der Vinted-Versandphase. "Im Lager", "Gelistet" und
+  "Verkauft" wählst du selbst. Deine Wahl hat immer Vorrang; die Automatik
+  füllt nur, solange du nichts Eigenes gesetzt hast ("Automatisch" im Menü).
+- Als gebundenes Kapital zählen Unterwegs, Im Lager und Gelistet.
+
+Bestenliste
+- Zeigt deine besten und schlechtesten Flips nach Gewinn. Bei bis zu drei
+  Verkäufen eine Liste, darüber zwei Spalten (beste/schlechteste).
+
+Einstellungen (Button oben)
+- Welche Spalten exportiert werden, ob erstattete Käufe mitkommen,
+  Trenn- und Dezimalzeichen (Standard passt für deutsches Excel) und
+  Standard-Zusatzkosten pro Artikel.
+
+Export
+- "Exportieren" erzeugt eine CSV mit genau den eingestellten Spalten.
+
+Refresh-Token
+- Im kleinen Fenster unten: geblurter Ausschnitt, Klick kopiert den
+  vollständigen Token in die Zwischenablage. Behandle ihn wie ein
+  Passwort und füge ihn nirgends Öffentliches ein.
+
+Versand & Details (in der Detailansicht)
+- Unten in der Detailansicht eines Artikels: "Von Vinted laden" holt
+  Tracking-Nummer, Versanddienstleister, Lieferziel und weitere Fotos
+  direkt von Vinted nach und zeigt sie an; die Sendungsnummer ist als
+  Link zur Sendungsverfolgung anklickbar.
+- Es werden nur die echten Artikelfotos gezeigt (eine Größe je Bild),
+  keine Profil- oder Verkäuferbilder und keine Thumbnails.
+- Ein Klick auf ein Foto öffnet es groß im selben Fenster (kein neuer
+  Tab); mit den Pfeilen oder den Pfeiltasten blätterst du, Escape oder
+  das × schließt wieder.
+  "Rohdaten anzeigen" bleibt verfügbar. Das Ergebnis wird je Sitzung
+  zwischengespeichert.
+
+Nur in der Testversion
+- "Daten löschen" (rot gestrichelt) entfernt alle geladenen Käufe,
+  Verkäufe und deine manuellen Angaben; die Einstellungen bleiben.
+  Erster Klick fragt nach, zweiter Klick innerhalb von 3 s löscht.
+  Alle Code-Stellen sind mit "TEST" markiert.
+
+Hinweise
+- Die Verkaufsliste (type=sold) ist aus der Käufe-Struktur abgeleitet.
+  Falls Verkäufe nicht geladen werden, bitte kurz Bescheid geben –
+  dann passe ich die Felder an die echte Antwort an.
+- Alle Daten bleiben lokal in deinem Browser.
+
+Angebote
+- Neue Ansicht „Angebote“ (linke Navigation): deine eigenen aktiven
+  Inserate mit Foto, Marke/Größe, Aufrufen, Favoriten, Datum, Status und
+  Preis; unten Summen (Anzahl, Angebotspreis, Aufrufe, Favoriten).
+- Werden beim Aktualisieren mitgeladen (Endpoint /api/v2/users/{id}/items;
+  die User-ID kommt aus dem v_uid-Cookie). Auf deinem Verkäufer-Account
+  angemeldet sein.
+
+Postfach (Chat)
+- Neue Ansicht „Postfach“: deine Vinted-Unterhaltungen mit Suche und
+  Filtern (Alle, Ungelesen, Von Käufern, An Verkäufer). Rechts der Verlauf
+  als Chatblasen; unten ein Feld zum direkten Antworten.
+- Senden geht erst nach deinem Klick auf „Senden“ und einer Nachfrage; nie
+  automatisch. Technisch läuft das Senden im vinted.de-Tab (dadurch kommt es
+  durch Cloudflare). Du musst bei vinted.de angemeldet sein.

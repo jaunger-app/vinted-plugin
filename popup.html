@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Meine Vinted-Käufe</title>
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="head">
+    <div>
+      <h1>Meine Vinted-Käufe</h1>
+      <p class="updated" id="updated">Noch nicht geladen</p>
+    </div>
+    <!-- TEST: Reset-Button – vor der finalen Version entfernen -->
+    <button type="button" class="btn btn-reset" id="reset">Daten löschen</button>
+  </header>
+
+  <p class="status" id="status" role="status" aria-live="polite" hidden></p>
+
+  <section class="empty" id="empty">
+    <p>Noch keine Käufe geladen. Melde dich in Chrome bei vinted.de an und klicke auf „Jetzt aktualisieren“. Das Laden läuft im Hintergrund weiter, auch wenn du dieses Fenster schließt. Danach wird automatisch im Hintergrund abgeglichen (alle 10 Minuten, bei offener Übersicht jede Minute), ohne dass sich ein Fenster öffnet.</p>
+  </section>
+
+  <div id="content" hidden>
+    <section class="denim" aria-label="Ausgaben">
+      <div class="denim-inner">
+        <p class="spent" id="profit">0,00 €</p>
+        <p class="spent-label" id="profit-label">Gewinn realisiert</p>
+        <dl class="facts">
+          <div><dt>Im Lager gebunden</dt><dd id="stockValue">0,00 €</dd></div>
+          <div><dt id="revenue-label">Umsatz</dt><dd id="revenue">0,00 €</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="phases" aria-label="Stand deiner Käufe">
+      <div class="bar" id="bar" aria-hidden="true"></div>
+      <ul class="legend" id="legend"></ul>
+    </section>
+
+    <section class="recent" aria-labelledby="recent-title">
+      <h2 id="recent-title">Neueste Käufe</h2>
+      <ul class="list" id="list"></ul>
+    </section>
+  </div>
+
+    <section class="token" id="token-section" aria-labelledby="token-caption">
+      <button type="button" class="token-chip" id="token-chip" title="Refresh-Token in die Zwischenablage kopieren" disabled>
+        <span class="token-caption" id="token-caption">Refresh-Token</span>
+        <code class="token-text" id="token-text">lädt …</code>
+        <svg class="token-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+      </button>
+    </section>
+
+  <footer class="foot">
+    <button type="button" class="btn btn-primary" id="load">Jetzt aktualisieren</button>
+    <button type="button" class="btn" id="open">Alle Käufe anzeigen</button>
+  </footer>
+
+  <script src="shared.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+/* Nur für die große Seite: Inter-Schrift + leicht angepasste Farben.
+   Das Popup lädt diese Datei nicht und bleibt bei Archivo. */
+@font-face { font-family: "Inter"; src: url("fonts/Inter-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-800.woff2") format("woff2"); font-weight: 800; font-display: swap; }
+
+:root {
+  /* etwas kühlere, hellere Flächen wie in der Vorlage */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --ink: #141619;
+  --muted: #6b7280;
+  --line: #ececf0;
+  --denim: #0f766e;      /* Teal-Akzent wie im Screenshot */
+  --denim-2: #0b5f58;
+  /* Kategorie-/Serienfarben im Pastellton der Vorlage */
+  --p-paid: #a7c0f0;
+  --p-done: #7c86f0;
+  --p-transit: #5fb8a3;
+  --p-listed: #b9a6e6;
+  --p-label: #e8c079;
+  --p-refund: #e39aa0;
+  --p-other: #c2c7d0;
+  --accent-chart: #3aa6a0;
+  --on-accent: #ffffff;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --sel: color-mix(in srgb, var(--denim) 9%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115;
+    --surface: #171a1f;
+    --ink: #e9eaee;
+    --muted: #9aa0ac;
+    --line: #262a31;
+    --denim: #2bb9ac;
+    --denim-2: #38c9bb;
+    --p-done: #8f98f5;
+    --p-listed: #c7b6ee;
+    --accent-chart: #3fc0b7;
+    --on-accent: #06201d;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115;
+  --surface: #171a1f;
+  --ink: #e9eaee;
+  --muted: #9aa0ac;
+  --line: #262a31;
+  --denim: #2bb9ac;
+  --denim-2: #38c9bb;
+  --p-done: #8f98f5;
+  --p-listed: #c7b6ee;
+  --accent-chart: #3fc0b7;
+  --on-accent: #06201d;
+  --shadow: none;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: -0.006em;
+}
+/* Inter braucht keine Breitenstauchung; font-stretch neutralisieren */
+h1, h2, h3, h4,
+.tile-value, .chart-total, .info-big, .brand-name, .spent, .brand-amount { font-stretch: 100% !important; }
+h1 { font-weight: 700; letter-spacing: -0.02em; }
+h2, h3 { font-weight: 600; letter-spacing: -0.01em; }

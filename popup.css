@@ -1,0 +1,114 @@
+/* Kleines Fenster beim Klick auf das Erweiterungssymbol */
+body { width: 360px; padding: 12px 16px; font-size: 14px; }
+
+.head { margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+/* TEST: Reset-Button – vor der finalen Version entfernen */
+.head .btn-reset { font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+h1 { font-size: 22px; line-height: 1.15; }
+h2 { font-size: 15px; margin-bottom: 6px; }
+.updated { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+
+.status { margin-bottom: 10px; font-size: 13px; padding: 7px 12px; }
+
+.empty p {
+  margin: 0 0 12px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+}
+
+.denim { padding: 6px; border-radius: 12px; margin-bottom: 10px; }
+.denim-inner { padding: 11px 14px 9px; border-radius: 8px; }
+.spent { font-size: 33px; }
+.spent-label { font-size: 13px; margin-top: 3px; }
+.facts { grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 9px; padding-top: 8px; }
+.facts dt { font-size: 12px; }
+.facts dd { font-size: 17px; }
+
+.phases { margin-bottom: 10px; }
+.phases .bar { height: 10px; margin-bottom: 8px; }
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend li { display: inline-flex; align-items: center; gap: 5px; }
+.legend .dot { width: 8px; height: 8px; }
+
+.recent { margin-bottom: 8px; }
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.item + .item { border-top: 1px solid var(--line); }
+.item .thumb { width: 32px; height: 42px; border-radius: 4px; }
+.item .chip { font-size: 12px; }
+.item .chip .dot { width: 8px; height: 8px; }
+.item .price { font-size: 14px; }
+
+.foot { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.foot .btn { padding: 9px 10px; }
+
+/* Während eine Meldung angezeigt wird, nur zwei Käufe zeigen, damit alles ins Fenster passt. */
+.status:not([hidden]) ~ #content .item:nth-child(n + 3) { display: none; }
+
+/* Refresh-Token: geblurter Ausschnitt, Klick kopiert in die Zwischenablage */
+.token { margin-bottom: 10px; }
+.token-chip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.token-chip:hover:not(:disabled) { border-color: var(--muted); }
+.token-chip:disabled { cursor: default; }
+.token-caption { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; flex: none; }
+.token-caption.ok { color: var(--p-transit); }
+.token-text {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  filter: blur(4px);
+  user-select: none;
+}
+.token-copy { flex: none; color: var(--muted); }
+.token-chip:hover:not(:disabled) .token-copy { color: var(--ink); }
+.token-chip.is-empty .token-text { filter: none; font-family: inherit; color: var(--muted); font-style: italic; }
+.token-chip.is-empty .token-copy { display: none; }
+
+
+/* Reseller: Gewinnfarben */
+.spent.neg { color: #ffb4a8; }
+.item .price.pos { color: var(--pos); }
+.item .price.neg { color: var(--p-refund); }

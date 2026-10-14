@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meine Vinted-Käufe</title>
+  <link rel="icon" href="icons/icon32.png">
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="base.css">
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="shell">
+    <!-- Linke Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">V</span>
+        <span class="brand-name">Vinted Tracker</span>
+      </div>
+
+      <label class="year-pick">
+        <span class="year-pick-label">Geschäftsjahr</span>
+        <select id="year-select" aria-label="Geschäftsjahr"></select>
+      </label>
+
+      <nav class="nav" aria-label="Hauptnavigation">
+        <p class="nav-section">Arbeitsbereich</p>
+        <button type="button" class="nav-item is-active" data-view="overview">
+          <span class="nav-ico" aria-hidden="true">⌂</span> Übersicht
+        </button>
+        <button type="button" class="nav-item" data-view="listings">
+          <span class="nav-ico" aria-hidden="true">🏷</span> Angebote
+          <span class="nav-badge" id="nav-listings"></span>
+        </button>
+        <button type="button" class="nav-item" data-view="orders">
+          <span class="nav-ico" aria-hidden="true">▤</span> Käufe
+          <span class="nav-badge" id="nav-count"></span>
+        </button>
+        <button type="button" class="nav-item" data-view="inbox">
+          <span class="nav-ico" aria-hidden="true">✉</span> Postfach
+          <span class="nav-badge" id="nav-inbox"></span>
+        </button>
+        <button type="button" class="nav-item" data-view="costs">
+          <span class="nav-ico" aria-hidden="true">€</span> Betriebskosten
+          <span class="nav-badge" id="nav-costs"></span>
+        </button>
+      </nav>
+
+      <div class="side-bottom">
+        <div class="live" id="live" data-state="idle">
+          <div class="live-row">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span class="live-text" id="live-text">Automatisch alle 60 s</span>
+            <button type="button" class="live-toggle" id="live-toggle" aria-pressed="false" title="Automatische Aktualisierung pausieren">Pause</button>
+          </div>
+          <p class="live-sub" id="updated">Noch nicht geladen</p>
+        </div>
+
+        <div class="side-actions">
+          <button type="button" class="btn btn-primary btn-block" id="load">Jetzt aktualisieren</button>
+          <div class="side-pair">
+            <button type="button" class="btn" id="settings-open">Einstellungen</button>
+            <button type="button" class="btn" id="export" disabled>Export</button>
+          </div>
+          <!-- TEST: Reset-Button – vor der finalen Version entfernen -->
+          <button type="button" class="btn btn-reset btn-block" id="reset">Daten löschen</button>
+        </div>
+
+        <div class="seg theme-seg" role="group" aria-label="Darstellung" id="theme-seg">
+          <button type="button" data-theme-set="light" title="Hell">☀ Hell</button>
+          <button type="button" data-theme-set="dark" title="Dunkel">☾ Dunkel</button>
+          <button type="button" data-theme-set="system" title="Wie das System">◐ System</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Hauptbereich -->
+    <main class="main">
+      <p class="status" id="status" role="status" aria-live="polite" hidden></p>
+
+      <section class="empty" id="empty">
+        <h2>Noch keine Käufe geladen</h2>
+        <p>Melde dich in diesem Browser bei vinted.de an. Deine Käufe, Verkäufe und Angebote werden unsichtbar im Hintergrund abgeglichen – jede Minute, solange diese Seite offen ist, sonst alle 10 Minuten. Oder klicke links auf „Jetzt aktualisieren“.</p>
+      </section>
+
+      <!-- Ansicht: Übersicht (Analyse) -->
+      <div id="view-overview" hidden>
+        <header class="ov-head">
+          <div>
+            <h1>Übersicht</h1>
+            <p class="ov-range" id="overview-range"></p>
+          </div>
+          <div class="seg range-seg" role="group" aria-label="Zeitraum" id="range-seg">
+            <button type="button" data-range="7d">7 T</button>
+            <button type="button" data-range="30d">30 T</button>
+            <button type="button" data-range="90d">90 T</button>
+            <button type="button" data-range="year">Jahr</button>
+          </div>
+        </header>
+
+        <!-- Kennzahlen: Summe des Zeitraums oder – nach Klick auf einen Balken – des gewählten Tages/Monats -->
+        <section class="kpi-card" aria-label="Kennzahlen">
+          <div class="kpi-context">
+            <span class="kpi-scope" id="kpi-scope">Letzte 30 Tage</span>
+            <button type="button" class="kpi-clear" id="kpi-clear" hidden>× Auswahl aufheben</button>
+          </div>
+          <div class="tiles" id="tiles"></div>
+          <p class="kpi-note" id="kpi-note" hidden></p>
+        </section>
+
+        <div class="ov-grid">
+          <section class="panel chart-panel" aria-label="Verlauf">
+            <div class="chart-head">
+              <div>
+                <p class="chart-metric" id="chart-metric"></p>
+                <p class="chart-hint" id="chart-hint">Balken anklicken für die Zahlen des Tages</p>
+              </div>
+              <div class="seg chart-toggle" role="group" aria-label="Diagrammart">
+                <button type="button" id="ct-bar" title="Balken">Balken</button>
+                <button type="button" id="ct-line" title="Linie">Linie</button>
+              </div>
+            </div>
+            <div class="chart-area">
+              <div class="chart-grid" id="chart-grid" aria-hidden="true"></div>
+              <div class="chart-line" id="chart-line" aria-hidden="true"></div>
+              <div class="chart" id="chart" role="group" aria-label="Verlauf, ein Balken pro Tag"></div>
+              <div class="chart-tip" id="chart-tip" hidden></div>
+            </div>
+            <div class="chart-axis" id="chart-axis" aria-hidden="true"></div>
+            <p class="chart-foot" id="chart-foot"></p>
+          </section>
+
+          <section class="panel info-panel" aria-labelledby="info-title">
+            <h3 id="info-title">Wo dein Geld steckt</h3>
+            <p class="panel-sub">Aktueller Stand im laufenden Geschäftsjahr.</p>
+            <p class="info-lead"><span class="info-big" id="info-big">0,00 €</span><span class="info-sub">im Lager gebunden</span></p>
+            <div class="bar info-bar" id="bar" aria-hidden="true"></div>
+            <ul class="info-list" id="legend"></ul>
+            <p class="info-note" id="info-note"></p>
+          </section>
+        </div>
+
+        <div class="ov-grid even">
+          <section class="panel" id="todo-panel" aria-labelledby="todo-title">
+            <h3 id="todo-title">Nächste Schritte</h3>
+            <p class="panel-sub">Was jetzt deine Aufmerksamkeit braucht.</p>
+            <ul class="todo-list" id="todo"></ul>
+          </section>
+
+          <section class="panel flips-panel" id="flips-section" aria-labelledby="flips-title">
+            <h3 id="flips-title">Bestenliste</h3>
+            <p class="panel-sub" id="flips-sub">Verkäufe im Zeitraum nach Gewinn.</p>
+            <div class="flips" id="flips"></div>
+          </section>
+        </div>
+
+        <div class="ov-grid even">
+          <section class="panel" aria-labelledby="brands-title">
+            <h3 id="brands-title">Wo du einkaufst</h3>
+            <p class="panel-sub">Käufe im Zeitraum nach Marke (aus den Titeln).</p>
+            <p class="info-lead"><span class="info-big" id="brands-count">0</span><span class="info-sub">Marken · <span id="brands-total">0,00 €</span> Einkauf</span></p>
+            <ul class="brand-list" id="brands"></ul>
+          </section>
+
+          <section class="panel" aria-labelledby="split-title">
+            <h3 id="split-title">Verkaufsverteilung</h3>
+            <p class="panel-sub">Umsatz im Zeitraum nach Kategorie.</p>
+            <div class="donut-wrap">
+              <div class="donut" id="donut">
+                <svg viewBox="0 0 120 120" id="donut-svg" aria-hidden="true"></svg>
+                <div class="donut-center"><span class="donut-label">Umsatz</span><span class="donut-total" id="donut-total">0,00 €</span></div>
+              </div>
+              <ul class="split-list" id="split"></ul>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Ansicht: Angebote (eigene Inserate) -->
+      <div id="view-listings" hidden>
+        <div class="orders-head">
+          <h1>Angebote</h1>
+          <label class="search">
+            <span class="visually-hidden">Angebot suchen</span>
+            <input type="search" id="listings-search" placeholder="Angebot suchen" autocomplete="off">
+          </label>
+        </div>
+        <div class="listcard">
+          <ul class="offers" id="offers"></ul>
+          <div class="offers-foot" id="offers-foot"></div>
+        </div>
+        <p class="no-match" id="offers-empty" hidden>Noch keine Angebote geladen. Klicke links auf „Jetzt aktualisieren“, während du auf deinem Verkäufer-Account bei vinted.de angemeldet bist.</p>
+      </div>
+
+      <!-- Ansicht: Postfach (Vinted-Chat) -->
+      <div id="view-inbox" hidden>
+        <div class="orders-head">
+          <h1>Postfach</h1>
+          <button type="button" class="btn" id="inbox-reload">Postfach laden</button>
+        </div>
+        <div class="chat">
+          <div class="chat-side">
+            <label class="search chat-search">
+              <span class="visually-hidden">Unterhaltung suchen</span>
+              <input type="search" id="inbox-search" placeholder="Name oder Artikel suchen" autocomplete="off">
+            </label>
+            <div class="chat-filters" id="inbox-filters"></div>
+            <ul class="conv-list" id="conv-list"></ul>
+            <p class="conv-empty" id="conv-empty" hidden>Noch nichts geladen. Klicke auf „Postfach laden“, während du bei vinted.de angemeldet bist.</p>
+          </div>
+          <div class="chat-main" id="chat-main">
+            <div class="chat-placeholder" id="chat-placeholder">Wähle links eine Unterhaltung.</div>
+            <div class="chat-thread" id="chat-thread" hidden>
+              <div class="thread-head" id="thread-head"></div>
+              <div class="thread-body" id="thread-body"></div>
+              <form class="composer" id="composer">
+                <textarea id="composer-input" rows="1" placeholder="Nachricht schreiben …"></textarea>
+                <button type="submit" class="btn btn-primary" id="composer-send">Senden</button>
+              </form>
+              <p class="composer-hint" id="composer-hint">Deine Nachricht wird erst nach Klick auf „Senden“ an Vinted geschickt.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ansicht: Betriebskosten -->
+      <div id="view-costs" hidden>
+        <div class="orders-head">
+          <div>
+            <h1>Betriebskosten</h1>
+            <p class="ov-range">Werden pro verkauftem Stück vom Gewinn abgezogen.</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="cost-add">+ Kosten hinzufügen</button>
+        </div>
+        <div class="cost-stats" id="cost-stats"></div>
+        <section class="cost-group" id="cost-monthly-group">
+          <h2>Monatlich</h2>
+          <ul class="cost-list" id="cost-monthly"></ul>
+        </section>
+        <section class="cost-group" id="cost-once-group">
+          <h2>Einmalig</h2>
+          <ul class="cost-list" id="cost-once"></ul>
+        </section>
+        <div class="empty" id="cost-empty" hidden>
+          <h2>Noch keine Betriebskosten</h2>
+          <p><strong>Monatlich</strong>, z. B. 100 Versandtüten für 15 €: Jeder Verkauf trägt dann 0,15 €. Ohne Stückzahl (z. B. ein Abo) wird der Betrag auf die Verkäufe des Monats verteilt.</p>
+          <p><strong>Einmalig</strong>, z. B. ein Etikettendrucker für 120 €: Jeder Verkauf zahlt einen festen Betrag ab, bis er abbezahlt ist.</p>
+        </div>
+      </div>
+
+      <!-- Ansicht: Käufe (Liste) -->
+      <div id="view-orders" hidden>
+        <div class="orders-head">
+          <h1 id="orders-title">Alle Käufe</h1>
+          <label class="search">
+            <span class="visually-hidden">Artikel suchen</span>
+            <input type="search" id="search" placeholder="Artikel suchen" autocomplete="off">
+          </label>
+          <button type="button" class="btn btn-primary" id="manual-add">+ Eigener Kauf</button>
+        </div>
+        <p class="private-note" id="private-note" hidden>🔒 Private Käufe sind nur zur Ansicht. Sie zählen nirgends mit: kein Umsatz, keine Ausgaben, kein Lager, keine Übersicht.</p>
+        <div class="filterbar" id="filterbar"></div>
+        <ul class="list" id="list"></ul>
+        <p class="no-match" id="no-match" hidden>Keine Käufe passen zu deiner Auswahl.</p>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="detail" class="modal"><div class="modal-card" id="detail-card"></div></dialog>
+
+  <dialog id="lightbox" class="lightbox">
+    <button type="button" class="lb-btn lb-close" id="lightbox-close" aria-label="Schließen">&times;</button>
+    <button type="button" class="lb-btn lb-prev" id="lightbox-prev" aria-label="Vorheriges Foto">&#8249;</button>
+    <img id="lightbox-img" alt="" referrerpolicy="no-referrer">
+    <button type="button" class="lb-btn lb-next" id="lightbox-next" aria-label="Nächstes Foto">&#8250;</button>
+    <p class="lb-count" id="lightbox-count"></p>
+  </dialog>
+
+  <dialog id="cost-dialog" class="modal">
+    <form class="modal-card" id="cost-form" novalidate>
+      <div class="modal-head">
+        <h2 id="cost-title">Kosten hinzufügen</h2>
+        <button type="button" class="icon-btn" id="cost-close" aria-label="Schließen">&times;</button>
+      </div>
+      <div class="seg cost-type" role="group" aria-label="Art der Kosten">
+        <button type="button" data-type="monthly">Monatlich</button>
+        <button type="button" data-type="once">Einmalig</button>
+      </div>
+      <div class="field">
+        <label>Name
+          <input type="text" id="cost-name" maxlength="60" placeholder="z. B. Versandtüten" autocomplete="off">
+        </label>
+      </div>
+      <div class="field">
+        <label>Beschreibung
+          <input type="text" id="cost-desc" maxlength="140" placeholder="optional, z. B. 100 Stück bei Amazon" autocomplete="off">
+        </label>
+      </div>
+      <div class="field two">
+        <label><span id="cost-amount-label">Betrag pro Monat (€)</span>
+          <input type="number" id="cost-amount" min="0" step="0.01" inputmode="decimal" placeholder="15,00">
+        </label>
+        <label data-for="monthly">Stück pro Monat
+          <input type="number" id="cost-qty" min="1" step="1" inputmode="numeric" placeholder="optional, z. B. 100">
+        </label>
+        <label data-for="once">Abzahlung pro verkauftem Stück (€)
+          <input type="number" id="cost-per" min="0.01" step="0.01" inputmode="decimal" placeholder="z. B. 2,00">
+        </label>
+      </div>
+      <div class="field two" data-for="monthly">
+        <label>Ab Monat
+          <input type="month" id="cost-start">
+        </label>
+        <label>Bis Monat
+          <input type="month" id="cost-end">
+          <span class="hint">leer = läuft weiter</span>
+        </label>
+      </div>
+      <div class="field two" data-for="once">
+        <label>Gekauft am
+          <input type="date" id="cost-date">
+        </label>
+      </div>
+      <p class="cost-preview" id="cost-preview"></p>
+      <p class="ship-error" id="cost-error" hidden></p>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-danger" id="cost-delete" hidden>Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="cost-cancel">Abbrechen</button>
+        <button type="submit" class="btn btn-primary" id="cost-save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="manual-dialog" class="modal">
+    <form class="modal-card" id="manual-form" novalidate>
+      <div class="modal-head">
+        <h2 id="manual-title">Eigener Kauf</h2>
+        <button type="button" class="icon-btn" id="manual-close" aria-label="Schließen">&times;</button>
+      </div>
+      <p class="hint manual-lead">Für Käufe außerhalb von Vinted, z. B. Kleinanzeigen, eBay oder Flohmarkt. Sie zählen ganz normal mit.</p>
+      <div class="field">
+        <label>Titel
+          <input type="text" id="manual-name" maxlength="120" placeholder="z. B. Levi's 501 W32 blau" autocomplete="off">
+        </label>
+      </div>
+      <div class="field two">
+        <label>Preis (€)
+          <input type="number" id="manual-amount" min="0" step="0.01" inputmode="decimal" placeholder="12,00">
+        </label>
+        <label>Gekauft am
+          <input type="date" id="manual-date">
+        </label>
+      </div>
+      <div class="field two">
+        <label>Plattform
+          <select id="manual-platform"></select>
+        </label>
+        <label id="manual-other-wrap">Welche Plattform?
+          <input type="text" id="manual-other" maxlength="30" placeholder="z. B. Zalando" autocomplete="off">
+        </label>
+      </div>
+      <div class="field two">
+        <label>Status
+          <select id="manual-status"></select>
+        </label>
+        <label>Zusatzkosten (€)
+          <input type="number" id="manual-extra" min="0" step="0.01" inputmode="decimal" placeholder="optional, z. B. Versand">
+        </label>
+      </div>
+      <div class="field two" id="manual-sold-wrap">
+        <label>Verkaufspreis (€)
+          <input type="number" id="manual-sale" min="0" step="0.01" inputmode="decimal" placeholder="z. B. 45,00">
+        </label>
+        <label>Verkauft am
+          <input type="date" id="manual-sold">
+        </label>
+      </div>
+      <div class="field">
+        <label>Notiz
+          <input type="text" id="manual-note" maxlength="200" placeholder="optional" autocomplete="off">
+        </label>
+      </div>
+      <div class="field photo-field">
+        <span class="photo-label">Foto (optional)</span>
+        <div class="photo-row">
+          <img id="manual-photo-preview" class="photo-preview" alt="" hidden>
+          <label class="btn photo-pick">Datei wählen
+            <input type="file" id="manual-photo" accept="image/*" class="visually-hidden">
+          </label>
+          <button type="button" class="btn" id="manual-photo-remove" hidden>Entfernen</button>
+        </div>
+      </div>
+      <label class="switch private-switch">
+        <input type="checkbox" id="manual-private">
+        <span><strong>Privat</strong> – wird nirgends mitgerechnet, nur unter „Privat“ sichtbar</span>
+      </label>
+      <p class="ship-error" id="manual-error" hidden></p>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-danger" id="manual-delete" hidden>Löschen</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="manual-cancel">Abbrechen</button>
+        <button type="submit" class="btn btn-primary">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settings" class="modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Einstellungen</h2>
+        <button type="button" class="icon-btn" id="settings-close" aria-label="Schließen">&times;</button>
+      </div>
+      <fieldset class="field">
+        <legend>Spalten im Export</legend>
+        <div class="col-grid" id="col-grid"></div>
+      </fieldset>
+      <div class="field">
+        <label class="switch"><input type="checkbox" id="set-refunds"> Erstattete Käufe mit exportieren</label>
+      </div>
+      <div class="field two">
+        <label>Trennzeichen
+          <select id="set-delim">
+            <option value=";">Semikolon ( ; ) – deutsches Excel</option>
+            <option value=",">Komma ( , )</option>
+            <option value="&#9;">Tabulator</option>
+          </select>
+        </label>
+        <label>Dezimalzeichen
+          <select id="set-decimal">
+            <option value=",">Komma ( , )</option>
+            <option value=".">Punkt ( . )</option>
+          </select>
+        </label>
+      </div>
+      <div class="field">
+        <label>Standard-Zusatzkosten pro Artikel (€)
+          <input type="number" id="set-extra" min="0" step="0.01" inputmode="decimal">
+        </label>
+        <p class="hint">Wird bei Artikeln ohne eigene Zusatzkosten angerechnet (z. B. Versandmaterial).</p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" id="settings-cancel">Abbrechen</button>
+        <button type="button" class="btn btn-primary" id="settings-save">Speichern</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="shared.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
