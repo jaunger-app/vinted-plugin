@@ -459,7 +459,7 @@ async function apiGet(path) {
   }
   if (isBlocked(r)) throw new ChallengeError("Vinted möchte eine Sicherheitsprüfung.");
   if (r.status === 0) throw new Error(`Netzwerkfehler (${r.error || "keine Verbindung"}).`);
-  throw new Error(`Vinted antwortet mit Fehler ${r.status}.`);
+  throw Object.assign(new Error(`Vinted antwortet mit Fehler ${r.status}.`), { status: r.status });
 }
 
 // Nur nach Klick auf „Jetzt aktualisieren“: Bei einer Sicherheitsprüfung einen
@@ -619,8 +619,20 @@ async function runSync(mode, { interactive }) {
     const listingsRaw = await optional(async () => {
       const uid = await getUserId(get);
       if (!uid) throw new Error("Benutzer-ID nicht gefunden.");
-      return fetchPages(get, (p) => `/api/v2/users/${uid}/items?page=${p}&per_page=20&order=relevance`,
-        (d) => d?.items, full ? MAX_LISTING_PAGES : 1, progress("Angebote"));
+      // Vinted hat den Pfad geändert (alt /users/<id>/items → 404, 2026-10): zuerst der Kleiderschrank, bei 404 der alte.
+      // Der Kleiderschrank liefert auch geschlossene („als verkauft markiert“ zum Relisten) – die zeigt das Plugin nicht.
+      let last = null;
+      for (const base of [`/api/v2/wardrobe/${uid}/items`, `/api/v2/users/${uid}/items`]) {
+        try {
+          const items = await fetchPages(get, (p) => `${base}?page=${p}&per_page=20&order=relevance`,
+            (d) => d?.items, full ? MAX_LISTING_PAGES : 1, progress("Angebote"));
+          return items.filter((it) => it?.is_closed !== true);
+        } catch (e) {
+          if (e?.status === 404) { last = e; continue; }
+          throw e;
+        }
+      }
+      throw last;
     }, "Angebote");
 
     const stored = await chrome.storage.local.get(["orders", "sales", "listings"]);

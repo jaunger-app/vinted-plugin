@@ -2,7 +2,7 @@
 
 Chrome-Erweiterung (Manifest V3, Vanilla JS, kein Build-Schritt) für einen deutschen Vinted-Reseller:
 lädt Käufe, Verkäufe und eigene Angebote von vinted.de und zeigt sie als Reseller-Dashboard
-(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.6).
+(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.7).
 Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene `CLAUDE.md`).
 
 ## Zusammenarbeit mit dem Nutzer (wichtig)
@@ -115,5 +115,6 @@ CSRF ja/nein, Status `POST`, Restminuten vorher/nachher – nie Token-Werte) in 
 2.8.5 Diagnose zeigte: POST im Tab = 200, aber kein `access_token_web` lesbar → `vintedCookies()` liest auch partitionierte
 Cookies (`partitionKey: {}`), `cookieValue` nimmt den mit spätester Ablaufzeit, `tokenFromJson` übernimmt einen Zugang aus
 der Antwort (`bodyAccessToken`); Diagnose mit Cookie-Namen/-Eigenschaften (`cookieInventory`, nie Werte) und Antwort-Feldnamen ·
-2.8.6 Brücke auch auf `https://jucreative.de` und `https://www.jucreative.de` (Manifest + `WEBAPP_ORIGINS`).
+2.8.6 Brücke auch auf `https://jucreative.de` und `https://www.jucreative.de` (Manifest + `WEBAPP_ORIGINS`) ·
+2.8.7 Brücke nach Neuladen der Erweiterung („Extension context invalidated“): `send()` antwortet mit `context-invalidated` statt zu werfen, verwaiste Scripts melden kein `hello` mehr. Eigene Angebote über `/api/v2/wardrobe/<id>/items` (Fallback `/users/<id>/items` bei 404, Fehler tragen `status`), geschlossene (`is_closed`) ausgefiltert.
 Bei neuen Versionen: `manifest.json` hochzählen, `LIESMICH.txt` „Neu in …“ oben ergänzen.

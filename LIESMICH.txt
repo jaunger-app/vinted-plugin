@@ -1,5 +1,13 @@
-Vinted Käufe & Reseller-Übersicht (Version 2.8.6 – Testversion)
+Vinted Käufe & Reseller-Übersicht (Version 2.8.7 – Testversion)
 =============================================================
+
+Neu in 2.8.7
+- Web-App: Wurde die Erweiterung neu geladen oder aktualisiert, meldet die Web-App
+  jetzt „Bitte diese Seite neu laden“ statt eines Timeouts (vorher Fehler
+  „Extension context invalidated“ in der Konsole).
+- Angebote: Die Liste der eigenen Angebote lädt wieder (Vinted hatte den Pfad
+  geändert, vorher Fehler 404). Als verkauft markierte Relist-Kopien werden
+  nicht angezeigt.
 
 Neu in 2.8.6
 - Web-App: Die Erweiterung arbeitet jetzt auch mit der Online-Adresse
