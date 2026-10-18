@@ -31,6 +31,8 @@
     if (d.type === "status") send({ type: "webappStatus" }, (r) => reply({ type: "status", id: d.id, ...r }));
     if (d.type === "token-match") send({ type: "webappTokenMatch", hash: String(d.hash || "") }, (r) => reply({ type: "token-match", id: d.id, ...r }));
     if (d.type === "request-token") send({ type: "webappToken", fresh: !!d.fresh }, (r) => reply({ type: "token", id: d.id, ...r }));
+    // 2.8.8: Antwort senden – nur auf ausdrückliche Anfrage der Web-App; der Hintergrund prüft Absender und Konto.
+    if (d.type === "send-reply") send({ type: "webappSend", conv: String(d.conv || ""), body: String(d.body || ""), expectUserId: String(d.expectUserId || "") }, (r) => reply({ type: "send-reply", id: d.id, ...r }));
   });
 
   if (document.documentElement) document.documentElement.dataset.vintedExt = VERSION;

@@ -116,6 +116,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "webappToken": webappToken(sender, msg.fresh).then(sendResponse); return true;
     case "webappStatus": webappStatus(sender).then(sendResponse); return true;
     case "webappTokenMatch": webappTokenMatch(sender, msg.hash).then(sendResponse); return true;
+    case "webappSend": webappSend(sender, msg).then(sendResponse); return true;
   }
 });
 
@@ -225,6 +226,83 @@ async function webappToken(sender, fresh) {
     return access ? { accessToken: access } : { error: "refresh-failed", diag: lastRefreshDiag };
   } catch (e) {
     return { error: String(e?.message || e) };
+  }
+}
+
+// ---------- Senden für die Web-App (2.8.8) ----------
+// Vinted nimmt Antworten nur mit der echten Browser-Sitzung an (der Server der Web-App bekommt sonst
+// „Login erforderlich“). Deshalb sendet die Erweiterung – nur auf ausdrückliche Anfrage der Web-App (Klick +
+// Bestätigung dort), nie automatisch, und nur, wenn im Browser genau das erwartete Vinted-Konto angemeldet ist.
+const SEND_TIMEOUT_MS = 25000;
+const MAX_SEND_BODY = 4000;
+
+/** Ergebnis einordnen wie der Server der Web-App: sent | failed (sicher nicht angekommen) | unclear (unbekannt). */
+function classifySend(r) {
+  if (!r) return { status: "unclear", httpStatus: 0, error: "keine Antwort" };
+  if (r.ok) return { status: "sent", httpStatus: r.status };
+  if (!r.status) return { status: "unclear", httpStatus: 0, error: r.error || "Verbindung abgebrochen" };
+  if (r.status >= 500) return { status: "unclear", httpStatus: r.status, error: `Vinted-Fehler ${r.status}` };
+  const msg = r.json && typeof r.json.message === "string" ? r.json.message.slice(0, 200) : "";
+  return { status: "failed", httpStatus: r.status, error: msg ? `Fehler ${r.status}: ${msg}` : `Fehler ${r.status}` };
+}
+/** Nutzer-ID aus einem Vinted-JWT (sub, user_id oder uid – wie tokenSubject im Server der Web-App). */
+function jwtSub(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    const json = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/")));
+    const v = json.sub ?? json.user_id ?? json.uid;
+    return v != null && /^\d+$/.test(String(v)) ? String(v) : null;
+  } catch {
+    return null;
+  }
+}
+/**
+ * Vinted-Nutzer-ID des im Browser angemeldeten Kontos. Reihenfolge: Cookie v_uid → Zugangs-Token → Refresh-Token
+ * (nur lokal gelesen, nie weitergegeben) → /api/v2/users/current im vinted.de-Tab. null = unbekannt (dann nicht senden).
+ */
+async function browserUserId(tab) {
+  const v = await cookieValue("v_uid");
+  if (v && /^\d+$/.test(v)) return v;
+  const fromToken = jwtSub(await cookieValue("access_token_web")) || jwtSub(bodyAccessToken) || jwtSub(await cookieValue("refresh_token_web"));
+  if (fromToken) return fromToken;
+  if (!tab) return null;
+  const r = await pageFetch(tab.id, "/api/v2/users/current").catch(() => null);
+  const id = r && r.ok && r.json && r.json.user && r.json.user.id;
+  return id != null && /^\d+$/.test(String(id)) ? String(id) : null;
+}
+const withTimeout = (p, ms) => Promise.race([p, new Promise((res) => setTimeout(() => res({ ok: false, status: 0, error: "Zeitüberschreitung" }), ms))]);
+
+async function webappSend(sender, msg) {
+  if (!webappAllowed(sender)) return { status: "failed", error: "not-allowed" };
+  const conv = String(msg?.conv ?? "");
+  const body = typeof msg?.body === "string" ? msg.body.trim() : "";
+  if (!/^\d{1,20}$/.test(conv)) return { status: "failed", error: "bad-conversation" };
+  if (!body || body.length > MAX_SEND_BODY) return { status: "failed", error: "bad-body" };
+  // Vor dem Absenden: alles, was hier scheitert, ist sicher nicht gesendet.
+  let tab;
+  try {
+    if (!(await cookieValue("refresh_token_web"))) return { status: "failed", error: "not-logged-in" };
+    // Abgelaufener Zugang im Browser: zuerst erneuern (wie für den Token der Web-App, notfalls im vinted.de-Tab) –
+    // sonst lehnt Vinted die Antwort mit 401 ab und das Konto ist nicht erkennbar.
+    if ((await accessLeftMs()) < ACCESS_FRESH_MS) await refreshSession(true, ACCESS_FRESH_MS, { tab: true });
+    tab = await findVintedTab();
+    const me = await browserUserId(tab);
+    if (!me) return { status: "failed", error: "unknown-account", diag: lastRefreshDiag };
+    if (String(msg?.expectUserId || "") !== me) return { status: "failed", error: "wrong-account" };
+    if (!tab && !csrfToken) await refreshSession(true);
+  } catch (e) {
+    return { status: "failed", error: String(e?.message || e) };
+  }
+  const path = `/api/v2/conversations/${encodeURIComponent(conv)}/replies`;
+  const opts = { method: "POST", body: { reply: { body } } };
+  try {
+    const r = tab
+      ? await withTimeout(pageFetch(tab.id, path, opts), SEND_TIMEOUT_MS)
+      : await withTimeout(directFetch(path, { ...opts, csrf: csrfToken }), SEND_TIMEOUT_MS);
+    return { ...classifySend(r), via: tab ? "tab" : "direct" };
+  } catch (e) {
+    // z. B. Tab während des Sendens geschlossen – ob Vinted die Anfrage bekam, ist unbekannt.
+    return { status: "unclear", httpStatus: 0, error: String(e?.message || e), via: tab ? "tab" : "direct" };
   }
 }
 

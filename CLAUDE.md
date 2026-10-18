@@ -2,7 +2,7 @@
 
 Chrome-Erweiterung (Manifest V3, Vanilla JS, kein Build-Schritt) für einen deutschen Vinted-Reseller:
 lädt Käufe, Verkäufe und eigene Angebote von vinted.de und zeigt sie als Reseller-Dashboard
-(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.7).
+(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.8).
 Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene `CLAUDE.md`).
 
 ## Zusammenarbeit mit dem Nutzer (wichtig)
@@ -18,7 +18,7 @@ Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene 
 | Datei | Rolle |
 | --- | --- |
 | `manifest.json` | MV3. Rechte: scripting, storage, unlimitedStorage, cookies, alarms, declarativeNetRequestWithHostAccess; Host: `https://www.vinted.de/*` |
-| `webapp-bridge.js` | Content-Script nur auf `http://localhost:3000/*`, `https://jucreative.de/*`, `https://www.jucreative.de/*` (Web-App `../vinted-webapp`): setzt `<html data-vinted-ext>`, beantwortet `postMessage` `request-token` (optional `fresh`) nur mit `access_token_web`, `status` (Version + angemeldet) und `token-match` (SHA-256-Vergleich) (über `background.js` → `webappToken`, prüft Absender-Origin gegen `WEBAPP_ORIGINS`). Neue Web-App-Adresse ⇒ in Manifest **und** `WEBAPP_ORIGINS` eintragen. |
+| `webapp-bridge.js` | Content-Script nur auf `http://localhost:3000/*`, `https://jucreative.de/*`, `https://www.jucreative.de/*` (Web-App `../vinted-webapp`): setzt `<html data-vinted-ext>`, beantwortet `postMessage` `request-token` (optional `fresh`) nur mit `access_token_web`, `status` (Version + angemeldet) und `token-match` (SHA-256-Vergleich), `send-reply` (2.8.8, Antwort im Postfach senden, siehe unten) (über `background.js` → `webappToken`, prüft Absender-Origin gegen `WEBAPP_ORIGINS`). Neue Web-App-Adresse ⇒ in Manifest **und** `WEBAPP_ORIGINS` eintragen. |
 | `background.js` | Service Worker: Verbindung zu Vinted, Sync (quick/full), Backoff, Postfach-Proxy, Detail-Laden, 10-min-Alarm |
 | `shared.js` | **Gesamte Rechenlogik** + Storage-Helfer, von Popup und Dashboard per `<script>` geladen (globale Funktionen). Kategorie/Marke (`categoryOf`, `categoryInfo`, `brandOf`, Wortliste `CATEGORY_WORDS`) erkennen **ganze Wörter** mit Punkten statt Wortstücken (seit 2026-10-14, gespiegelt aus der Web-App, siehe dort `claude-anleitung/023-…`); der zweite Parameter (Vinted-Kategoriepfad/-Marke) bleibt hier leer |
 | `dashboard.html/.js/.css` | Großes Dashboard (Übersicht, Angebote, Käufe, Postfach, Betriebskosten, Dialoge) |
@@ -117,4 +117,5 @@ Cookies (`partitionKey: {}`), `cookieValue` nimmt den mit spätester Ablaufzeit,
 der Antwort (`bodyAccessToken`); Diagnose mit Cookie-Namen/-Eigenschaften (`cookieInventory`, nie Werte) und Antwort-Feldnamen ·
 2.8.6 Brücke auch auf `https://jucreative.de` und `https://www.jucreative.de` (Manifest + `WEBAPP_ORIGINS`) ·
 2.8.7 Brücke nach Neuladen der Erweiterung („Extension context invalidated“): `send()` antwortet mit `context-invalidated` statt zu werfen, verwaiste Scripts melden kein `hello` mehr. Eigene Angebote über `/api/v2/wardrobe/<id>/items` (Fallback `/users/<id>/items` bei 404, Fehler tragen `status`), geschlossene (`is_closed`) ausgefiltert.
+2.8.8 Brücke `send-reply` → `webappSend(sender, msg)`: sendet eine Antwort der Web-App (Postfach, nur nach Klick + Bestätigung dort) im vinted.de-Tab (`pageFetch`, sonst `directFetch` mit CSRF), Zeitgrenze 25 s. **Kontoschutz:** `browserUserId()` (`v_uid`, sonst `sub` des Zugangs-Tokens) muss `expectUserId` sein, sonst `wrong-account` ohne Anfrage. `classifySend`: 2xx `sent`, 4xx `failed`, 5xx/Status 0/Abbruch/Zeitüberschreitung `unclear` – nie ein zweiter Versuch. Grund: Vinted lehnt Antworten vom Server der Web-App mit 400 „Login erforderlich“ ab (nur `access_token_web`, keine Browser-Sitzung). Test `tests/test-webapp-send.js`.
 Bei neuen Versionen: `manifest.json` hochzählen, `LIESMICH.txt` „Neu in …“ oben ergänzen.

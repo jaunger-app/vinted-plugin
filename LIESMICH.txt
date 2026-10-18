@@ -1,5 +1,12 @@
-Vinted Käufe & Reseller-Übersicht (Version 2.8.7 – Testversion)
+Vinted Käufe & Reseller-Übersicht (Version 2.8.8 – Testversion)
 =============================================================
+
+Neu in 2.8.8
+- Web-App: Antworten aus dem Postfach der Web-App sendet jetzt die Erweiterung
+  im angemeldeten vinted.de-Tab (Vinted nimmt sie vom Server nicht an:
+  „Login erforderlich“). Nur nach Klick und Bestätigung in der Web-App, und nur,
+  wenn im Browser genau das passende Vinted-Konto angemeldet ist – sonst wird
+  nichts gesendet. Danach Erweiterung neu laden und die Web-App-Seite neu laden.
 
 Neu in 2.8.7
 - Web-App: Wurde die Erweiterung neu geladen oder aktualisiert, meldet die Web-App

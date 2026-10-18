@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vinted Käufe – Übersicht",
-  "version": "2.8.7",
+  "version": "2.8.8",
   "description": "Vinted-Käufe und -Verkäufe als Reseller-Übersicht mit automatischer Aktualisierung, Gewinn, Versand-Details und CSV-Export.",
   "permissions": ["scripting", "storage", "unlimitedStorage", "cookies", "alarms", "declarativeNetRequestWithHostAccess"],
   "host_permissions": ["https://www.vinted.de/*"],
