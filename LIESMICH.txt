@@ -1,5 +1,51 @@
-Vinted Käufe & Reseller-Übersicht (Version 2.8.7 – Testversion)
+refold – Erweiterung (Version 2.9.4 – Testversion)
 =============================================================
+
+Neu in 2.9.4
+- Senden findet die Unterhaltung jetzt über Vinteds Nachrichtenliste (auch ältere,
+  bis 200 Unterhaltungen zurück) statt über die Postfach-Seite – dort steht sie nicht.
+- Wird sie nicht gefunden, nennt die Meldung eine kurze Diagnose (nur Zähler).
+
+Neu in 2.9.3
+- Antworten aus dem Postfach der Web-App kommen wieder an: Vinted nimmt Nachrichten
+  seit Oktober 2026 nur noch über seinen neuen Nachrichten-Dienst an. Die Erweiterung
+  sucht dafür die neue Kennung der Unterhaltung, prüft sie und sendet genau einmal.
+- Zum Senden muss ein vinted.de-Tab offen sein (mit dem richtigen Konto angemeldet).
+
+Neu in 2.9.2
+- Store-Version: `node tools/build-store.mjs` erzeugt dist/refold-2.9.2-store.zip für
+  den Chrome Web Store – ohne die Entwicklungsadresse localhost:3000 und ohne
+  ungenutzte Dateien. Der Ordner selbst bleibt zum Entwickeln wie bisher.
+- Gibt es nur eine Server-Adresse (Store-Version), zeigt das Popup unten keine
+  Server-Auswahl mehr, nur die Version.
+- Neue Kurzbeschreibung im Manifest (gleich der Store-Zusammenfassung).
+
+Neu in 2.9.1
+- „Mit Google anmelden“: öffnet die Website, dort meldest du dich an (Google oder
+  E-Mail) und klickst auf „Erweiterung verbinden“. Danach ist die Erweiterung mit
+  demselben Konto angemeldet – auch wenn du kein Passwort hast.
+- „Registrieren“ führt nach dem Anlegen des Kontos direkt zum Verbinden.
+
+Neu in 2.9.0
+- Anmelden mit deinem refold-Konto: dieselbe E-Mail und dasselbe Passwort wie auf
+  der Website. Noch kein Konto? Im Popup auf „Registrieren“ – das öffnet die Website.
+  „Passwort vergessen?“ schickt dir den Link per E-Mail.
+- Das große Dashboard der Erweiterung ist entfallen. Alles Auswerten passiert jetzt
+  im Dashboard der Website (Knopf „Dashboard öffnen“ im Popup).
+- Das Popup zeigt nur noch: dein Konto, ob du bei vinted.de angemeldet bist, deine
+  verbundenen Vinted-Konten, „Jetzt aktualisieren“ und „Abmelden“.
+- Die Erweiterung gleicht nicht mehr selbst alle 10 Minuten mit Vinted ab (das macht
+  die Website) – weniger Anfragen an Vinted. Die Verbindung zur Web-App (Zugang
+  weitergeben, Antworten senden) funktioniert unverändert.
+- Installieren/Aktualisieren: chrome://extensions → „Neu laden“, danach die Web-App-
+  Seite neu laden. Unten im Popup wählst du den Server (localhost:3000 bzw. jucreative.de).
+
+Neu in 2.8.8
+- Web-App: Antworten aus dem Postfach der Web-App sendet jetzt die Erweiterung
+  im angemeldeten vinted.de-Tab (Vinted nimmt sie vom Server nicht an:
+  „Login erforderlich“). Nur nach Klick und Bestätigung in der Web-App, und nur,
+  wenn im Browser genau das passende Vinted-Konto angemeldet ist – sonst wird
+  nichts gesendet. Danach Erweiterung neu laden und die Web-App-Seite neu laden.
 
 Neu in 2.8.7
 - Web-App: Wurde die Erweiterung neu geladen oder aktualisiert, meldet die Web-App

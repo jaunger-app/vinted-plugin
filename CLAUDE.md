@@ -1,8 +1,11 @@
 # Vinted-Plugin – Kontext für Claude
 
-Chrome-Erweiterung (Manifest V3, Vanilla JS, kein Build-Schritt) für einen deutschen Vinted-Reseller:
-lädt Käufe, Verkäufe und eigene Angebote von vinted.de und zeigt sie als Reseller-Dashboard
-(Gewinn, Lager, Betriebskosten, Geschäftsjahr, Export). Version siehe `manifest.json` (aktuell 2.8.7).
+Chrome-Erweiterung (Manifest V3, Vanilla JS, kein Build-Schritt), Marke **refold**. **Seit 2.9.0 kein eigenes Dashboard
+mehr:** Die Erweiterung ist die Brücke zwischen der Vinted-Sitzung im Browser und der Web-App (`../vinted-webapp`):
+Zugangs-Token weitergeben, Sitzung im vinted.de-Tab erneuern, Antworten senden. Das Popup meldet mit dem refold-Konto der
+Website an (Server-Endpunkte `/api/extension/*` der Web-App, siehe dort `claude-anleitung/046-extension-login.md`).
+Version siehe `manifest.json` (aktuell 2.9.4; Senden der Web-App-Antworten über den Messaging-Dienst `api.vinted.de/messaging/main/conversations/<uuid>/replies`, siehe Versionen; „Mit Google anmelden“ = Übergabe von der Website-Seite `/erweiterung-verbinden` über die Brücke `ext-session` → `background.js webappSession`, die die Sitzung per `/api/extension/me` bestätigt). Der Abschnitt „Fachliche Regeln“ und `shared.js` beschreiben den alten
+Dashboard-Stand (Logik lebt in der Web-App weiter, `shared.js` wird nicht mehr geladen, nur noch getestet).
 Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene `CLAUDE.md`).
 
 ## Zusammenarbeit mit dem Nutzer (wichtig)
@@ -17,16 +20,15 @@ Schwesterprojekt: `../vinted-webapp` (Next.js-Port desselben Dashboards, eigene 
 ## Dateien
 | Datei | Rolle |
 | --- | --- |
-| `manifest.json` | MV3. Rechte: scripting, storage, unlimitedStorage, cookies, alarms, declarativeNetRequestWithHostAccess; Host: `https://www.vinted.de/*` |
-| `webapp-bridge.js` | Content-Script nur auf `http://localhost:3000/*`, `https://jucreative.de/*`, `https://www.jucreative.de/*` (Web-App `../vinted-webapp`): setzt `<html data-vinted-ext>`, beantwortet `postMessage` `request-token` (optional `fresh`) nur mit `access_token_web`, `status` (Version + angemeldet) und `token-match` (SHA-256-Vergleich) (über `background.js` → `webappToken`, prüft Absender-Origin gegen `WEBAPP_ORIGINS`). Neue Web-App-Adresse ⇒ in Manifest **und** `WEBAPP_ORIGINS` eintragen. |
-| `background.js` | Service Worker: Verbindung zu Vinted, Sync (quick/full), Backoff, Postfach-Proxy, Detail-Laden, 10-min-Alarm |
+| `manifest.json` | MV3, Name „refold“. Rechte: scripting, storage, unlimitedStorage (alter lokaler Datenbestand), cookies, declarativeNetRequestWithHostAccess (**„alarms“ seit 2.9.0 entfernt**); Host: `https://www.vinted.de/*` + Web-App `http://localhost:3000/*`, `https://jucreative.de/*` (für die Konto-Endpunkte ohne CORS) |
+| `account.js` | (2.9.0) Konto der Erweiterung: `login`, `logout`, `idToken` (erneuert vor Ablauf), `authedRequest` (bei 401 einmal neu), `currentUser` (serverseitig geprüft), `requestPasswordReset`, Server-Auswahl `WEB_BASES`. Speicher: `extAuth` (Refresh-Token + Konto + Server) in `storage.local`, `extIdToken` in `storage.session`; nie Passwörter |
+| `webapp-bridge.js` | Content-Script nur auf `http://localhost:3000/*`, `https://jucreative.de/*`, `https://www.jucreative.de/*` (Web-App `../vinted-webapp`): setzt `<html data-vinted-ext>`, beantwortet `postMessage` `request-token` (optional `fresh`) nur mit `access_token_web`, `status` (Version + angemeldet) und `token-match` (SHA-256-Vergleich), `send-reply` (2.8.8, Antwort im Postfach senden, siehe unten) (über `background.js` → `webappToken`, prüft Absender-Origin gegen `WEBAPP_ORIGINS`). Neue Web-App-Adresse ⇒ in Manifest **und** `WEBAPP_ORIGINS` eintragen. |
+| `background.js` | Service Worker: Brücke zur Web-App (`webappToken/Status/TokenMatch/Send`), Sitzungserneuerung (auch im vinted.de-Tab), merkt `lastHandoffAt` (storage.session) fürs Popup. **Seit 2.9.0 kein eigener Abgleich mehr** (kein Alarm, keine Dashboard-Nachrichten); `runSync`/`autoSync` bleiben als Code (Tests) |
 | `shared.js` | **Gesamte Rechenlogik** + Storage-Helfer, von Popup und Dashboard per `<script>` geladen (globale Funktionen). Kategorie/Marke (`categoryOf`, `categoryInfo`, `brandOf`, Wortliste `CATEGORY_WORDS`) erkennen **ganze Wörter** mit Punkten statt Wortstücken (seit 2026-10-14, gespiegelt aus der Web-App, siehe dort `claude-anleitung/023-…`); der zweite Parameter (Vinted-Kategoriepfad/-Marke) bleibt hier leer |
-| `dashboard.html/.js/.css` | Großes Dashboard (Übersicht, Angebote, Käufe, Postfach, Betriebskosten, Dialoge) |
-| `popup.html/.js/.css` | Kleines Fenster: Gewinn/Umsatz laufendes Jahr, neueste Käufe, Refresh-Token kopieren |
-| `base.css` | Gemeinsame Tokens (Farben, Buttons) – Popup + Dashboard |
-| `theme.css` | Inter-Schrift + Farb-Overrides nur fürs Dashboard |
-| `theme-init.js` | Setzt `data-theme` vor dem ersten Zeichnen (aus `localStorage.theme`) |
-| `tests/*.js` | Node-Tests (siehe unten) |
+| `popup.html/.js/.css` | (2.9.0) refold-Popup, monochrom: A) Anmelden (E-Mail/Passwort, Passwort vergessen, Registrieren → Website), B) angemeldet: Konto + Abmelden, Vinted-Status im Browser, Konten aus der Web-App, „Jetzt aktualisieren“, „Dashboard öffnen“; Server-Auswahl im Fuß. Schriften Inter/Syne/DM Mono lokal in `fonts/` |
+| ~~`dashboard.*`, `base.css`, `theme.css`, `theme-init.js`~~ | 2.9.0 entfernt (Dashboard lebt in der Web-App) |
+| `tests/*.js` | Node-Tests (siehe unten); `test-account.js` (2.9.0) prüft account.js; E2E des Popups mit „Chrome for Testing“ (Playwright-Cache), da Marken-Chrome `--load-extension` ignoriert |
+| `tools/build-store.mjs` | (2.9.2) Store-Paket `dist/refold-<version>-store.zip`: entfernt `http://localhost:3000` aus Manifest, `WEB_BASES` und `WEBAPP_ORIGINS`, nimmt nur geladene Dateien (kein `shared.js`, nur Schriften aus `popup.css`), bricht bei Rest-„localhost“ oder Syntaxfehler ab. Quellcode behält localhost (Entwicklung + Gleichheitstest der Web-App). Test `tests/test-store-build.js`. Store-Assets: `../marketing/refold-store` |
 | `LIESMICH.txt` | Nutzer-Doku, pro Version ein Abschnitt „Neu in x.y“ oben |
 | `UMSETZUNGSPLAN.md` | Plan der jeweils letzten größeren Änderung |
 
@@ -117,4 +119,9 @@ Cookies (`partitionKey: {}`), `cookieValue` nimmt den mit spätester Ablaufzeit,
 der Antwort (`bodyAccessToken`); Diagnose mit Cookie-Namen/-Eigenschaften (`cookieInventory`, nie Werte) und Antwort-Feldnamen ·
 2.8.6 Brücke auch auf `https://jucreative.de` und `https://www.jucreative.de` (Manifest + `WEBAPP_ORIGINS`) ·
 2.8.7 Brücke nach Neuladen der Erweiterung („Extension context invalidated“): `send()` antwortet mit `context-invalidated` statt zu werfen, verwaiste Scripts melden kein `hello` mehr. Eigene Angebote über `/api/v2/wardrobe/<id>/items` (Fallback `/users/<id>/items` bei 404, Fehler tragen `status`), geschlossene (`is_closed`) ausgefiltert.
+2.8.8 Brücke `send-reply` → `webappSend(sender, msg)`: sendet eine Antwort der Web-App (Postfach, nur nach Klick + Bestätigung dort) im vinted.de-Tab (`pageFetch`, sonst `directFetch` mit CSRF), Zeitgrenze 25 s. **Kontoschutz:** `browserUserId()` (`v_uid`, sonst `sub` des Zugangs-Tokens) muss `expectUserId` sein, sonst `wrong-account` ohne Anfrage. `classifySend`: 2xx `sent`, 4xx `failed`, 5xx/Status 0/Abbruch/Zeitüberschreitung `unclear` – nie ein zweiter Versuch. Grund: Vinted lehnt Antworten vom Server der Web-App mit 400 „Login erforderlich“ ab (nur `access_token_web`, keine Browser-Sitzung). Test `tests/test-webapp-send.js`.
+2.9.2 Store-Version: `tools/build-store.mjs` (ohne localhost, schlankes Paket), Server-Auswahl im Popup nur bei mehr als einer Adresse, Manifest-Beschreibung = Store-Zusammenfassung Nr. 1.
+2.9.3 `webappSend` sendet über den Messaging-Dienst: `POST https://api.vinted.de/messaging/main/conversations/<uuid>/replies` mit `{ content, is_personal_data_sharing_check_skipped: false, photo_temp_uuids: null }` aus dem vinted.de-Tab (`messagingFetch`: CSRF + Anon-ID aus der Seite, `platform`/`locale`; Werte verlassen den Tab nie). Die Web-App kennt nur die alte Zahlen-ID (= `core_id_deprecated`) ⇒ `resolveConversation` (ab 2.9.4 über die Liste, s. u.), **gesendet wird nur an eine UUID, deren GET `core_id_deprecated` = Zahlen-ID liefert** (gemerkt in `convUuids`); `allow_reply: false` ⇒ `reply-not-allowed`, kein Tab ⇒ `no-tab`, nichts gefunden ⇒ `conversation-not-found` – alles ohne POST. Kein direkter Weg aus dem Service Worker mehr (kein Host-Recht für api.vinted.de, CORS).
+2.9.4 UUID-Suche über `GET https://api.vinted.de/messaging/main/inbox` (`?next_cursor=`, 20 je Seite, höchstens 10 Seiten, kurze Pause) statt HTML (die Liste lädt per XHR, das HTML enthält sie nicht). Die Liste hat **kein** `core_id_deprecated` ⇒ Vorauswahl über das Gegenüber (`opposite_users[].data.id` = `otherUserId` von der Web-App), dann Detail-GET mit `core_id_deprecated`-Prüfung, höchstens 6 Detailanfragen. Zeitgrenze Suche 20 s. Bei `conversation-not-found` geht `diag` (nur Zähler/HTTP-Status) mit zurück. Brücke reicht `otherUserId` durch.
 Bei neuen Versionen: `manifest.json` hochzählen, `LIESMICH.txt` „Neu in …“ oben ergänzen.
+Store-Paket bauen: `node tools/build-store.mjs` → `dist/` (nicht versioniert).
