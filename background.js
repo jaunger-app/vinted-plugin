@@ -10,9 +10,9 @@
 // Zwei Arten von Abgleich:
 //   quick – nur Seite 1 jeder Liste, wird mit dem gespeicherten Stand zusammengeführt
 //   full  – alle Seiten, ersetzt den Stand
-// Die Übersicht stößt alle 60 s einen automatischen Abgleich an ("sync"),
-// zusätzlich alle 10 min ein Alarm; hier wird entschieden, ob quick, full
-// oder gar nichts (Pause, Wartezeit).
+// Seit 2.9.0 stößt nichts mehr einen eigenen Abgleich an (Dashboard entfernt, kein Alarm). Aufgabe der
+// Erweiterung ist die Brücke zur Web-App: Zugangs-Token weitergeben, Sitzung im vinted.de-Tab erneuern,
+// Antworten senden. Der Abgleich-Code darunter bleibt nur erhalten (Tests, mögliche Wiederverwendung).
 
 const ORIGIN = "https://www.vinted.de";
 const ORDERS_PATH = (type, page) => `/api/v2/my_orders?type=${type}&status=all&per_page=20&page=${page}`;
@@ -92,31 +92,27 @@ async function setupHeaderRule() {
   }
 }
 
-async function ensureAlarm() {
-  const existing = await chrome.alarms.get(ALARM).catch(() => null);
-  if (!existing) chrome.alarms.create(ALARM, { periodInMinutes: 10, delayInMinutes: 1 });
-}
+// 2.9.0: Kein eigener Abgleich mehr. Das große Dashboard der Erweiterung ist entfallen; die Web-App gleicht
+// serverseitig ab. Ein Alarm aus älteren Versionen wird entfernt (die Berechtigung „alarms“ ist gestrichen,
+// dann gibt es chrome.alarms nicht – daher die Prüfung). runSync/autoSync bleiben als Code erhalten (Tests),
+// werden aber von nichts mehr angestoßen.
+function dropOldAlarm() { try { chrome.alarms?.clear?.(ALARM); } catch { /* ohne Berechtigung nichts zu tun */ } }
 
 setupHeaderRule();
-ensureAlarm();
-chrome.runtime.onInstalled.addListener(() => { setupHeaderRule(); ensureAlarm(); });
-chrome.runtime.onStartup.addListener(() => { setupHeaderRule(); ensureAlarm(); });
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === ALARM) autoSync("alarm"); });
+dropOldAlarm();
+chrome.runtime.onInstalled.addListener(() => { setupHeaderRule(); dropOldAlarm(); });
+chrome.runtime.onStartup.addListener(() => { setupHeaderRule(); });
 
 // ---------- Nachrichten ----------
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg?.type) {
-    case "load":       runSync("full", { interactive: true }).then(sendResponse); return true;
-    case "sync":       autoSync("dashboard").then(sendResponse); return true;
-    case "loadDetail": loadDetail(msg.id, msg.conv); break;
-    case "inbox":
-    case "thread":
-    case "send":       msgRequest(msg).then(sendResponse); return true;
+    // 2.9.0: load/sync/loadDetail/inbox/thread/send gehörten zum entfernten Dashboard – nur noch die Web-App-Brücke.
     case "webappToken": webappToken(sender, msg.fresh).then(sendResponse); return true;
     case "webappStatus": webappStatus(sender).then(sendResponse); return true;
     case "webappTokenMatch": webappTokenMatch(sender, msg.hash).then(sendResponse); return true;
     case "webappSend": webappSend(sender, msg).then(sendResponse); return true;
+    case "webappSession": webappSession(sender, msg.session).then(sendResponse); return true;
   }
 });
 
@@ -223,9 +219,38 @@ async function webappToken(sender, fresh) {
       access = (await value("access_token_web")) || bodyAccessToken;
     }
     // Angemeldet (Refresh-Token da), aber die Erneuerung hat nicht geklappt – nicht „nicht angemeldet“ melden.
+    // 2.9.0: Zeitpunkt der letzten Weitergabe fürs Popup merken (nur die Zeit, nie den Token).
+    if (access) chrome.storage.session.set({ lastHandoffAt: Date.now() }).catch(() => {});
     return access ? { accessToken: access } : { error: "refresh-failed", diag: lastRefreshDiag };
   } catch (e) {
     return { error: String(e?.message || e) };
+  }
+}
+
+// ---------- Anmeldung von der Website übernehmen (2.9.1) ----------
+// Die Seite /erweiterung-verbinden der Web-App holt (angemeldet, auch per Google) eine eingeschränkte Erweiterungs-
+// Sitzung und reicht sie hierher. Wir vertrauen ihr nicht blind: Absender muss die Web-App sein, und die Sitzung wird
+// beim Server (/api/extension/me) bestätigt – erst dann wird sie gespeichert. Schlüssel wie in account.js.
+const EXT_AUTH_KEY = "extAuth";
+const EXT_ID_KEY = "extIdToken";
+const webBaseFor = (origin) => (origin === "https://www.jucreative.de" ? "https://jucreative.de" : origin);
+async function webappSession(sender, session) {
+  if (!webappAllowed(sender)) return { error: "not-allowed" };
+  const s = session || {};
+  const valid = typeof s.idToken === "string" && s.idToken.length < 8192 && typeof s.refreshToken === "string" && s.refreshToken.length < 8192
+    && Number.isFinite(s.expiresAt) && typeof s.user?.uid === "string";
+  if (!valid) return { error: "invalid" };
+  const base = webBaseFor(new URL(sender.url).origin);
+  try {
+    const r = await fetch(`${base}/api/extension/me`, { headers: { authorization: `Bearer ${s.idToken}` }, credentials: "omit", cache: "no-store" });
+    const json = await r.json().catch(() => ({}));
+    if (!r.ok || !json.ok || json.extension !== true || json.user?.uid !== s.user.uid) return { error: "rejected" };
+    const user = { uid: json.user.uid, email: json.user.email ?? null };
+    await chrome.storage.local.set({ webBase: base, [EXT_AUTH_KEY]: { refreshToken: s.refreshToken, user, base } });
+    await chrome.storage.session.set({ [EXT_ID_KEY]: { idToken: s.idToken, expiresAt: s.expiresAt } });
+    return { ok: true, email: user.email };
+  } catch {
+    return { error: "rejected" };
   }
 }
 
@@ -272,14 +297,116 @@ async function browserUserId(tab) {
 }
 const withTimeout = (p, ms) => Promise.race([p, new Promise((res) => setTimeout(() => res({ ok: false, status: 0, error: "Zeitüberschreitung" }), ms))]);
 
+// 2.9.3: Vinted sendet Antworten seit 2026-10 über den Messaging-Dienst auf api.vinted.de. Er kennt Unterhaltungen nur
+// unter ihrer UUID; unser Postfach (/api/v2/inbox) liefert die alte Zahlen-ID (= core_id_deprecated der Detailansicht).
+// 2.9.4: UUID aus der Liste messaging/main/inbox (Cursor), nicht aus dem HTML (die Liste lädt per XHR nach).
+const MESSAGING_BASE = "https://api.vinted.de/messaging/main/conversations/";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RESOLVE_TIMEOUT_MS = 20000;
+/** Zahlen-ID → UUID, nur nach erfolgreicher Prüfung gemerkt (Service Worker: lebt bis zum Neustart). */
+const convUuids = new Map();
+
+/**
+ * Anfrage an den Messaging-Dienst aus dem vinted.de-Tab – mit den Kopfzeilen, die Vinteds eigene Seite mitschickt
+ * (CSRF-Token, Anon-ID, platform, locale). Beides wird im Tab gesucht und nie zurückgegeben, nur ob es gefunden wurde.
+ */
+async function messagingFetch(tabId, url, options) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    args: [url, options || null],
+    func: async (u, opt) => {
+      const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+      const html = () => document.documentElement ? document.documentElement.innerHTML : "";
+      const fromHtml = (keys) => {
+        const m = new RegExp(`(?:${keys})\\\\?"\\s*:\\s*\\\\?"(${UUID})`, "i").exec(html());
+        return m ? m[1] : null;
+      };
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      const csrf = (meta && meta.content) || window.__vinted_csrf_token || fromHtml("CSRF_TOKEN|csrf_token|csrfToken");
+      const cookie = /(?:^|;\s*)anon_id=([^;]+)/.exec(document.cookie || "");
+      const anon = (cookie && decodeURIComponent(cookie[1])) || fromHtml("anon_id|anonId");
+      const headers = { "Accept": "application/json, text/plain, */*", "platform": "web", "locale": document.documentElement.lang || "de-DE" };
+      if (csrf) headers["X-CSRF-Token"] = csrf;
+      if (anon) headers["X-Anon-Id"] = anon;
+      let body;
+      if (opt && opt.body != null) { headers["Content-Type"] = "application/json"; body = JSON.stringify(opt.body); }
+      try {
+        const r = await fetch(u, { method: (opt && opt.method) || "GET", headers, body, credentials: "include" });
+        let json = null; let text = "";
+        try { json = await r.clone().json(); } catch { text = await r.text().catch(() => ""); }
+        return { ok: r.ok, status: r.status, json, text: text.slice(0, 2000), csrf: !!csrf, anon: !!anon };
+      } catch (e) { return { ok: false, status: 0, error: String(e), csrf: !!csrf, anon: !!anon }; }
+    },
+  });
+  return result;
+}
+
+const MESSAGING_INBOX = "https://api.vinted.de/messaging/main/inbox";
+/** Höchstens so viele Listenseiten (à 20) und Detailprüfungen je Sendung – danach „nicht gefunden“, nie raten. */
+const MAX_INBOX_PAGES = 10;
+const MAX_DETAIL_CHECKS = 6;
+const pageGap = () => new Promise((r) => setTimeout(r, 300 + Math.random() * 300));
+
+/** Nutzer-ID des Gegenübers in einem Eintrag der Messaging-Liste (opposite_users[].data.id). */
+const oppositeIds = (c) => (Array.isArray(c && c.opposite_users) ? c.opposite_users : [])
+  .map((u) => String((u && u.data && u.data.id) ?? (u && u.id) ?? "")).filter(Boolean);
+
+/**
+ * UUID der Unterhaltung ermitteln und prüfen. Die Liste (messaging/main/inbox) kennt nur UUIDs, keine Zahlen-ID –
+ * Vorauswahl über das Gegenüber, dann muss die Detailansicht core_id_deprecated = Zahlen-ID liefern.
+ * Ohne bestätigte UUID wird nie gesendet. diag enthält nur Zähler/Status, keine Namen oder Inhalte.
+ */
+async function resolveConversation(tabId, conv, otherUserId) {
+  const diag = { pages: 0, entries: 0, candidates: 0, checks: 0, listStatus: null, detailStatus: null };
+  const check = async (uuid) => {
+    diag.checks++;
+    const r = await messagingFetch(tabId, MESSAGING_BASE + encodeURIComponent(uuid));
+    diag.detailStatus = r ? r.status : 0;
+    const c = r && r.ok && r.json && (r.json.conversation || r.json);
+    if (!c || String(c.id || "").toLowerCase() !== uuid.toLowerCase()) return null;
+    if (!UUID_RE.test(conv) && String(c.core_id_deprecated ?? "") !== conv) return null;
+    return { uuid: c.id, allowReply: c.allow_reply !== false };
+  };
+  if (UUID_RE.test(conv)) return { ...(await check(conv)), diag };
+  const known = convUuids.get(conv);
+  if (known) { const ok = await check(known); if (ok) return { ...ok, diag }; convUuids.delete(conv); }
+  const other = /^\d{1,20}$/.test(String(otherUserId || "")) ? String(otherUserId) : null;
+  const tried = new Set();
+  let cursor = null;
+  for (let page = 0; page < MAX_INBOX_PAGES; page++) {
+    if (page) await pageGap();
+    const url = cursor ? `${MESSAGING_INBOX}?next_cursor=${encodeURIComponent(cursor)}` : MESSAGING_INBOX;
+    const r = await messagingFetch(tabId, url);
+    diag.listStatus = r ? r.status : 0;
+    if (!r || !r.ok || !r.json) break;
+    diag.pages++;
+    const list = Array.isArray(r.json.conversations) ? r.json.conversations : [];
+    diag.entries += list.length;
+    // Mit bekanntem Gegenüber nur dessen Unterhaltungen prüfen, sonst der Reihe nach (neueste zuerst).
+    const picks = list.filter((c) => c && UUID_RE.test(String(c.id || "")) && (!other || oppositeIds(c).includes(other)));
+    diag.candidates += picks.length;
+    for (const c of picks) {
+      if (diag.checks >= MAX_DETAIL_CHECKS) return { diag };
+      if (tried.has(c.id)) continue;
+      tried.add(c.id);
+      const ok = await check(c.id);
+      if (ok) { convUuids.set(conv, ok.uuid); return { ...ok, diag }; }
+    }
+    const pg = r.json.pagination || {};
+    if (!pg.has_next || !pg.next_cursor) break;
+    cursor = String(pg.next_cursor);
+  }
+  return { diag };
+}
+
 async function webappSend(sender, msg) {
   if (!webappAllowed(sender)) return { status: "failed", error: "not-allowed" };
   const conv = String(msg?.conv ?? "");
   const body = typeof msg?.body === "string" ? msg.body.trim() : "";
-  if (!/^\d{1,20}$/.test(conv)) return { status: "failed", error: "bad-conversation" };
+  if (!/^\d{1,20}$/.test(conv) && !UUID_RE.test(conv)) return { status: "failed", error: "bad-conversation" };
   if (!body || body.length > MAX_SEND_BODY) return { status: "failed", error: "bad-body" };
   // Vor dem Absenden: alles, was hier scheitert, ist sicher nicht gesendet.
-  let tab;
+  let tab, target;
   try {
     if (!(await cookieValue("refresh_token_web"))) return { status: "failed", error: "not-logged-in" };
     // Abgelaufener Zugang im Browser: zuerst erneuern (wie für den Token der Web-App, notfalls im vinted.de-Tab) –
@@ -289,20 +416,21 @@ async function webappSend(sender, msg) {
     const me = await browserUserId(tab);
     if (!me) return { status: "failed", error: "unknown-account", diag: lastRefreshDiag };
     if (String(msg?.expectUserId || "") !== me) return { status: "failed", error: "wrong-account" };
-    if (!tab && !csrfToken) await refreshSession(true);
+    // Der Messaging-Dienst (api.vinted.de) ist nur aus der Vinted-Seite erreichbar (CORS + CSRF der Seite).
+    if (!tab) return { status: "failed", error: "no-tab" };
+    target = await withTimeout(resolveConversation(tab.id, conv, msg?.otherUserId), RESOLVE_TIMEOUT_MS);
+    if (!target || !target.uuid) return { status: "failed", error: "conversation-not-found", diag: target && target.diag ? target.diag : { timeout: true } };
+    if (!target.allowReply) return { status: "failed", error: "reply-not-allowed" };
   } catch (e) {
     return { status: "failed", error: String(e?.message || e) };
   }
-  const path = `/api/v2/conversations/${encodeURIComponent(conv)}/replies`;
-  const opts = { method: "POST", body: { reply: { body } } };
+  const opts = { method: "POST", body: { content: body, is_personal_data_sharing_check_skipped: false, photo_temp_uuids: null } };
   try {
-    const r = tab
-      ? await withTimeout(pageFetch(tab.id, path, opts), SEND_TIMEOUT_MS)
-      : await withTimeout(directFetch(path, { ...opts, csrf: csrfToken }), SEND_TIMEOUT_MS);
-    return { ...classifySend(r), via: tab ? "tab" : "direct" };
+    const r = await withTimeout(messagingFetch(tab.id, `${MESSAGING_BASE}${encodeURIComponent(target.uuid)}/replies`, opts), SEND_TIMEOUT_MS);
+    return { ...classifySend(r), via: "tab" };
   } catch (e) {
     // z. B. Tab während des Sendens geschlossen – ob Vinted die Anfrage bekam, ist unbekannt.
-    return { status: "unclear", httpStatus: 0, error: String(e?.message || e), via: tab ? "tab" : "direct" };
+    return { status: "unclear", httpStatus: 0, error: String(e?.message || e), via: "tab" };
   }
 }
 

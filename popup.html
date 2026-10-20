@@ -2,64 +2,87 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>Meine Vinted-Käufe</title>
-  <script src="theme-init.js"></script>
-  <link rel="stylesheet" href="base.css">
+  <title>refold</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header class="head">
-    <div>
-      <h1>Meine Vinted-Käufe</h1>
-      <p class="updated" id="updated">Noch nicht geladen</p>
-    </div>
-    <!-- TEST: Reset-Button – vor der finalen Version entfernen -->
-    <button type="button" class="btn btn-reset" id="reset">Daten löschen</button>
+  <header class="top">
+    <span class="brand" aria-label="refold">
+      <svg class="mark" width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect class="m-tile" width="32" height="32" rx="9"/><rect class="m-stem" x="9.5" y="8" width="5.5" height="16" rx="1"/><path class="m-fold" d="M15 8h7.5a.5.5 0 0 1 .35.85L15 16.7z"/></svg>
+      <span class="word">refold</span>
+    </span>
+    <span class="tag">Erweiterung</span>
   </header>
 
-  <p class="status" id="status" role="status" aria-live="polite" hidden></p>
-
-  <section class="empty" id="empty">
-    <p>Noch keine Käufe geladen. Melde dich in Chrome bei vinted.de an und klicke auf „Jetzt aktualisieren“. Das Laden läuft im Hintergrund weiter, auch wenn du dieses Fenster schließt. Danach wird automatisch im Hintergrund abgeglichen (alle 10 Minuten, bei offener Übersicht jede Minute), ohne dass sich ein Fenster öffnet.</p>
+  <!-- Laden: kurz, bis die Sitzung serverseitig geprüft ist -->
+  <section id="v-loading" class="view" aria-busy="true">
+    <p class="muted">Sitzung wird geprüft …</p>
   </section>
 
-  <div id="content" hidden>
-    <section class="denim" aria-label="Ausgaben">
-      <div class="denim-inner">
-        <p class="spent" id="profit">0,00 €</p>
-        <p class="spent-label" id="profit-label">Gewinn realisiert</p>
-        <dl class="facts">
-          <div><dt>Im Lager gebunden</dt><dd id="stockValue">0,00 €</dd></div>
-          <div><dt id="revenue-label">Umsatz</dt><dd id="revenue">0,00 €</dd></div>
-        </dl>
-      </div>
-    </section>
+  <!-- A: nicht angemeldet -->
+  <section id="v-login" class="view" hidden>
+    <h1>Anmelden</h1>
+    <p class="lead">Mit deinem refold-Konto – demselben wie auf der Website.</p>
+    <button type="button" class="btn btn-google" id="google">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+      Mit Google anmelden
+    </button>
+    <p class="divider"><span>oder mit E-Mail</span></p>
+    <form id="login-form" novalidate>
+      <label class="field">
+        <span>E-Mail</span>
+        <input id="email" type="email" autocomplete="email" inputmode="email" required spellcheck="false">
+      </label>
+      <label class="field">
+        <span>Passwort</span>
+        <span class="pw">
+          <input id="password" type="password" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" id="pw-toggle" aria-pressed="false">Anzeigen</button>
+        </span>
+      </label>
+      <p class="msg" id="login-msg" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary" id="login-btn">Anmelden</button>
+    </form>
+    <div class="links">
+      <button type="button" class="link" id="reset">Passwort vergessen?</button>
+      <a class="link" id="register" href="#" target="_blank" rel="noopener">Noch kein Konto? Registrieren ↗</a>
+    </div>
+  </section>
 
-    <section class="phases" aria-label="Stand deiner Käufe">
-      <div class="bar" id="bar" aria-hidden="true"></div>
-      <ul class="legend" id="legend"></ul>
-    </section>
+  <!-- B: angemeldet -->
+  <section id="v-app" class="view" hidden>
+    <div class="account">
+      <span class="avatar" id="avatar" aria-hidden="true"></span>
+      <span class="who"><span class="label">Angemeldet als</span><span class="email" id="user-email"></span></span>
+      <button type="button" class="btn btn-quiet btn-sm" id="logout">Abmelden</button>
+    </div>
 
-    <section class="recent" aria-labelledby="recent-title">
-      <h2 id="recent-title">Neueste Käufe</h2>
-      <ul class="list" id="list"></ul>
-    </section>
-  </div>
+    <div class="block">
+      <p class="label">Vinted im Browser</p>
+      <p class="state"><span class="dot" id="vinted-dot"></span><span id="vinted-text">wird geprüft …</span></p>
+      <p class="hint" id="vinted-hint"></p>
+    </div>
 
-    <section class="token" id="token-section" aria-labelledby="token-caption">
-      <button type="button" class="token-chip" id="token-chip" title="Refresh-Token in die Zwischenablage kopieren" disabled>
-        <span class="token-caption" id="token-caption">Refresh-Token</span>
-        <code class="token-text" id="token-text">lädt …</code>
-        <svg class="token-copy" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-      </button>
-    </section>
+    <div class="block">
+      <p class="label">Deine Konten</p>
+      <ul class="accounts" id="accounts"><li class="muted">lädt …</li></ul>
+    </div>
+
+    <p class="msg" id="app-msg" role="status" hidden></p>
+    <div class="actions">
+      <a class="btn btn-primary" id="open-dashboard" href="#" target="_blank" rel="noopener">Dashboard öffnen</a>
+      <button type="button" class="btn" id="sync">Jetzt aktualisieren</button>
+    </div>
+  </section>
 
   <footer class="foot">
-    <button type="button" class="btn btn-primary" id="load">Jetzt aktualisieren</button>
-    <button type="button" class="btn" id="open">Alle Käufe anzeigen</button>
+    <label class="server"><span>Server</span>
+      <select id="server" aria-label="Server-Adresse der Web-App"></select>
+    </label>
+    <span class="ver" id="ver"></span>
   </footer>
 
-  <script src="shared.js"></script>
+  <script src="account.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-// Brücke zur Web-App (vinted-webapp, läuft auf http://localhost:3000 bzw. https://jucreative.de).
+// Brücke zur Web-App (vinted-webapp; erlaubte Adressen: manifest.json content_scripts + WEBAPP_ORIGINS in background.js).
 // Die Seite fragt per window.postMessage nach einem frischen Vinted-Zugangs-Token; der Hintergrund
 // liest ihn mit chrome.cookies (HttpOnly, für die Seite unsichtbar) und wir reichen ihn zurück.
 (() => {
@@ -32,7 +32,10 @@
     if (d.type === "token-match") send({ type: "webappTokenMatch", hash: String(d.hash || "") }, (r) => reply({ type: "token-match", id: d.id, ...r }));
     if (d.type === "request-token") send({ type: "webappToken", fresh: !!d.fresh }, (r) => reply({ type: "token", id: d.id, ...r }));
     // 2.8.8: Antwort senden – nur auf ausdrückliche Anfrage der Web-App; der Hintergrund prüft Absender und Konto.
-    if (d.type === "send-reply") send({ type: "webappSend", conv: String(d.conv || ""), body: String(d.body || ""), expectUserId: String(d.expectUserId || "") }, (r) => reply({ type: "send-reply", id: d.id, ...r }));
+    // 2.9.1: Anmeldung von der Website übernehmen (Seite „Erweiterung verbinden“, auch für Google-Konten) – nur auf Klick dort;
+    // der Hintergrund prüft Absender und bestätigt die Sitzung selbst beim Server, bevor er sie speichert.
+    if (d.type === "ext-session") send({ type: "webappSession", session: d.session }, (r) => reply({ type: "ext-session", id: d.id, ...r }));
+    if (d.type === "send-reply") send({ type: "webappSend", conv: String(d.conv || ""), body: String(d.body || ""), expectUserId: String(d.expectUserId || ""), otherUserId: String(d.otherUserId || "") }, (r) => reply({ type: "send-reply", id: d.id, ...r }));
   });
 
   if (document.documentElement) document.documentElement.dataset.vintedExt = VERSION;

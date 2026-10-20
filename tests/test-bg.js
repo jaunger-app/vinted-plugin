@@ -3,7 +3,7 @@ const fs = require("fs"), vm = require("vm"), assert = require("assert");
 const src = fs.readFileSync(require("path").join(__dirname, "..", "background.js"), "utf8");
 
 function makeEnv(scenario) {
-  const calls = { windowsCreate: 0, tabsCreate: 0, pageFetch: 0, refresh: 0, alarms: [], dnr: 0, fetches: [] };
+  const calls = { windowsCreate: 0, tabsCreate: 0, pageFetch: 0, refresh: 0, alarms: [], alarmsCleared: [], dnr: 0, fetches: [] };
   const session = {}, local = {};
   const area = (store) => ({
     get: async (k) => { const o = {}; [].concat(k).forEach((x) => { if (x in store) o[x] = store[x]; }); return o; },
@@ -27,7 +27,7 @@ function makeEnv(scenario) {
     storage: { session: area(session), local: area(local) },
     action: { setBadgeText() {}, setBadgeBackgroundColor() {} },
     runtime: { onMessage: ev(), onInstalled: ev(), onStartup: ev(), getURL: (p) => p },
-    alarms: { get: async () => null, create: (n, o) => calls.alarms.push([n, o]), onAlarm: ev() },
+    alarms: { get: async () => null, create: (n, o) => calls.alarms.push([n, o]), clear: (n) => { calls.alarmsCleared.push(n); }, onAlarm: ev() },
     declarativeNetRequest: { updateSessionRules: async () => { calls.dnr++; } },
     tabs: {
       TAB_ID_NONE: -1,
@@ -52,7 +52,8 @@ function makeEnv(scenario) {
   assert.ok(r.ok, "direkt ok"); assert.strictEqual(r.sync.transport, "direct");
   assert.strictEqual(e.local.orders.length, 1);
   assert.strictEqual(e.calls.windowsCreate + e.calls.tabsCreate + e.calls.pageFetch, 0, "kein Fenster/Tab");
-  assert.strictEqual(e.calls.alarms[0][0], "vinted-sync"); assert.strictEqual(e.calls.alarms[0][1].periodInMinutes, 10);
+  // 2.9.0: kein eigener 10-min-Abgleich mehr – es wird kein Alarm angelegt, ein alter wird entfernt
+  assert.strictEqual(e.calls.alarms.length, 0, "kein Alarm angelegt"); assert.deepStrictEqual(e.calls.alarmsCleared, ["vinted-sync"]);
   assert.ok(e.calls.dnr >= 1, "Header-Regel gesetzt");
 
   // 2) Login abgelaufen → Startseite unsichtbar → erneut
