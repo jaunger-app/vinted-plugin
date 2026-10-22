@@ -112,6 +112,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "webappStatus": webappStatus(sender).then(sendResponse); return true;
     case "webappTokenMatch": webappTokenMatch(sender, msg.hash).then(sendResponse); return true;
     case "webappSend": webappSend(sender, msg).then(sendResponse); return true;
+    case "webappOffer": webappOffer(sender, msg).then(sendResponse); return true;
     case "webappSession": webappSession(sender, msg.session).then(sendResponse); return true;
   }
 });
@@ -183,7 +184,7 @@ async function webappStatus(sender) {
   try {
     let accessMin = null;
     try { accessMin = minutesLeft(await accessLeftMs()); } catch { /* leer */ }
-    return { version: chrome.runtime.getManifest().version, loggedIn: !!(await cookieValue("refresh_token_web")), accessMin, lastRefresh: lastRefreshDiag, cookies: await cookieInventory() };
+    return { version: chrome.runtime.getManifest().version, loggedIn: !!(await cookieValue("refresh_token_web")), accessMin, lastRefresh: lastRefreshDiag, cookies: await cookieInventory(), offerCaps: offerCaps(), sendCaps: sendCaps() };
   } catch (e) {
     return { error: String(e?.message || e) };
   }
@@ -399,38 +400,412 @@ async function resolveConversation(tabId, conv, otherUserId) {
   return { diag };
 }
 
+/**
+ * Gemeinsamer Vorspann für Senden und Angebote: angemeldet, Zugang frisch, im Browser genau das erwartete Konto,
+ * vinted.de-Tab offen. Liefert { tab, me } oder { fail } – alles, was hier scheitert, hat Vinted nichts geschickt.
+ */
+async function prepareTab(msg) {
+  try {
+    if (!(await cookieValue("refresh_token_web"))) return { fail: { status: "failed", error: "not-logged-in" } };
+    // Abgelaufener Zugang im Browser: zuerst erneuern (wie für den Token der Web-App, notfalls im vinted.de-Tab) –
+    // sonst lehnt Vinted die Anfrage mit 401 ab und das Konto ist nicht erkennbar.
+    if ((await accessLeftMs()) < ACCESS_FRESH_MS) await refreshSession(true, ACCESS_FRESH_MS, { tab: true });
+    const tab = await findVintedTab();
+    const me = await browserUserId(tab);
+    if (!me) return { fail: { status: "failed", error: "unknown-account", diag: lastRefreshDiag } };
+    if (String(msg?.expectUserId || "") !== me) return { fail: { status: "failed", error: "wrong-account" } };
+    // Messaging-Dienst und schreibende /api/v2-Aufrufe gehen nur aus der Vinted-Seite (CORS + CSRF der Seite).
+    if (!tab) return { fail: { status: "failed", error: "no-tab" } };
+    return { tab, me };
+  } catch (e) {
+    return { fail: { status: "failed", error: String(e?.message || e) } };
+  }
+}
+
+/** Wie prepareTab, zusätzlich die Unterhaltung im Messaging-Dienst per GET bestätigt (UUID für das Senden). */
+async function prepareConversation(conv, msg) {
+  const prep = await prepareTab(msg);
+  if (prep.fail) return prep;
+  try {
+    const target = await withTimeout(resolveConversation(prep.tab.id, conv, msg?.otherUserId), RESOLVE_TIMEOUT_MS);
+    if (!target || !target.uuid) return { fail: { status: "failed", error: "conversation-not-found", diag: target && target.diag ? target.diag : { timeout: true } } };
+    return { ...prep, target };
+  } catch (e) {
+    return { fail: { status: "failed", error: String(e?.message || e) } };
+  }
+}
+
+// ---------- Bildanhang (2.9.6, Web-App 057/058) ----------
+// Ein Bild in eine Antwort – so, wie Vinteds Website es macht (Mitschnitt des Nutzers, 2026-10-22):
+//   1. POST https://www.vinted.de/api/v2/photos, multipart photo[type]=user_msg + photo[file] (KEINE eigene temp_uuid) ⇒ 200,
+//      Antwort u. a. mit id, temp_uuid, photo_temp_uuid, code;
+//   2. POST …/messaging/main/conversations/<uuid>/replies mit { content: Text | null, …, photo_temp_uuids: [eine ID] } ⇒ 201.
+// Offen (O1): ob temp_uuid oder photo_temp_uuid aus der Upload-Antwort in photo_temp_uuids gehört ⇒ idField bleibt null und
+// der Versand gesperrt, bis ein weiterer Mitschnitt das zeigt. Dann idField eintragen und enabled auf true setzen – nur mit
+// ausdrücklicher Zustimmung des Nutzers (Marker FREISCHALTEN (057)). 5xx beim Senden nach erfolgreichem Upload ⇒ unklar (041).
+const IMAGE_SEND = { enabled: false /* FREISCHALTEN (057) */, photoType: "user_msg", idField: null };
+const MAX_PHOTO_DATAURL = Math.ceil((2 * 1024 * 1024 * 4) / 3) + 64;
+const PHOTO_RE = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/;
+const ID_FIELDS = ["temp_uuid", "photo_temp_uuid"];
+const sendCaps = () => ({ image: IMAGE_SEND.enabled === true && !!IMAGE_SEND.photoType && ID_FIELDS.includes(IMAGE_SEND.idField) });
+
+/**
+ * Bild im Tab hochladen (nur freigeschaltet). Liefert { id } (aus genau dem Feld idField der Antwort) oder
+ * { fail: { httpStatus, code } } – dann ist nichts gesendet. IDs verlassen die Funktion nur als Rückgabewert, nie im Log.
+ */
+async function uploadChatPhoto(tabId, dataUrl) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    args: [`${ORIGIN}/api/v2/photos`, dataUrl, IMAGE_SEND.photoType],
+    func: async (url, data, type) => {
+      const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+      const html = document.documentElement ? document.documentElement.innerHTML : "";
+      const m = new RegExp(`CSRF_TOKEN\\\\?"\\s*:\\s*\\\\?"(${UUID})`, "i").exec(html);
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      const csrf = (meta && meta.content) || (m && m[1]) || null;
+      const anon = /(?:^|;\s*)anon_id=([^;]+)/.exec(document.cookie || "");
+      const blob = await (await fetch(data)).blob();
+      const form = new FormData();
+      form.append("photo[type]", type);
+      form.append("photo[file]", blob, blob.type === "image/png" ? "karte.png" : "karte.jpg");
+      const headers = { Accept: "application/json, text/plain, */*" };
+      if (csrf) headers["X-CSRF-Token"] = csrf;
+      if (anon) headers["X-Anon-Id"] = decodeURIComponent(anon[1]);
+      try {
+        const r = await fetch(url, { method: "POST", body: form, headers, credentials: "include" });
+        let json = null;
+        try { json = await r.json(); } catch { /* keine JSON-Antwort */ }
+        return { ok: r.ok, status: r.status, json };
+      } catch (e) { return { ok: false, status: 0, error: String(e) }; }
+    },
+  });
+  return pickPhotoId(result);
+}
+/** Upload-Antwort prüfen: 2xx, JSON, ID genau aus idField (auch unter json.photo) – sonst Fehler, nie geraten. */
+function pickPhotoId(r) {
+  const code = r && r.json && typeof r.json.code === "number" ? r.json.code : null;
+  if (!r || !r.ok || !r.json || typeof r.json !== "object") return { fail: { httpStatus: r ? r.status : 0, code } };
+  const field = IMAGE_SEND.idField;
+  const from = (o) => (o && typeof o === "object" && typeof o[field] === "string" && o[field].trim() ? o[field].trim() : null);
+  const id = ID_FIELDS.includes(field) ? from(r.json) || from(r.json.photo) : null;
+  return id ? { id } : { fail: { httpStatus: r.status, code } };
+}
+
 async function webappSend(sender, msg) {
   if (!webappAllowed(sender)) return { status: "failed", error: "not-allowed" };
   const conv = String(msg?.conv ?? "");
   const body = typeof msg?.body === "string" ? msg.body.trim() : "";
+  const photo = typeof msg?.photo === "string" && msg.photo ? msg.photo : null;
   if (!/^\d{1,20}$/.test(conv) && !UUID_RE.test(conv)) return { status: "failed", error: "bad-conversation" };
-  if (!body || body.length > MAX_SEND_BODY) return { status: "failed", error: "bad-body" };
+  // (057) Bildanhang: gesperrt ⇒ nichts geht raus, auch der Text nicht (der Nutzer wollte beides zusammen senden).
+  if (photo && !sendCaps().image) return { status: "failed", error: "image-not-enabled" };
+  if (photo && (photo.length > MAX_PHOTO_DATAURL || !PHOTO_RE.test(photo))) return { status: "failed", error: "bad-photo" };
+  if ((!body && !photo) || body.length > MAX_SEND_BODY) return { status: "failed", error: "bad-body" };
   // Vor dem Absenden: alles, was hier scheitert, ist sicher nicht gesendet.
-  let tab, target;
-  try {
-    if (!(await cookieValue("refresh_token_web"))) return { status: "failed", error: "not-logged-in" };
-    // Abgelaufener Zugang im Browser: zuerst erneuern (wie für den Token der Web-App, notfalls im vinted.de-Tab) –
-    // sonst lehnt Vinted die Antwort mit 401 ab und das Konto ist nicht erkennbar.
-    if ((await accessLeftMs()) < ACCESS_FRESH_MS) await refreshSession(true, ACCESS_FRESH_MS, { tab: true });
-    tab = await findVintedTab();
-    const me = await browserUserId(tab);
-    if (!me) return { status: "failed", error: "unknown-account", diag: lastRefreshDiag };
-    if (String(msg?.expectUserId || "") !== me) return { status: "failed", error: "wrong-account" };
-    // Der Messaging-Dienst (api.vinted.de) ist nur aus der Vinted-Seite erreichbar (CORS + CSRF der Seite).
-    if (!tab) return { status: "failed", error: "no-tab" };
-    target = await withTimeout(resolveConversation(tab.id, conv, msg?.otherUserId), RESOLVE_TIMEOUT_MS);
-    if (!target || !target.uuid) return { status: "failed", error: "conversation-not-found", diag: target && target.diag ? target.diag : { timeout: true } };
-    if (!target.allowReply) return { status: "failed", error: "reply-not-allowed" };
-  } catch (e) {
-    return { status: "failed", error: String(e?.message || e) };
+  const prep = await prepareConversation(conv, msg);
+  if (prep.fail) return prep.fail;
+  const { tab, target } = prep;
+  if (!target.allowReply) return { status: "failed", error: "reply-not-allowed" };
+  let photoId = null;
+  if (photo) {
+    const up = await uploadChatPhoto(tab.id, photo).catch(() => ({ fail: { httpStatus: 0, code: null } }));
+    // Ohne Bild-ID wird nichts gesendet (auch der Text nicht) – sicher nicht angekommen.
+    if (!up.id) return { status: "failed", error: "photo-upload-failed", stage: "upload", httpStatus: up.fail.httpStatus, code: up.fail.code };
+    photoId = up.id;
   }
-  const opts = { method: "POST", body: { content: body, is_personal_data_sharing_check_skipped: false, photo_temp_uuids: null } };
+  // Reine Bildnachricht: content null (wie Vinteds Website).
+  const opts = { method: "POST", body: { content: photo ? body || null : body, is_personal_data_sharing_check_skipped: false, photo_temp_uuids: photoId ? [photoId] : null } };
+  const stage = photo ? { stage: "reply" } : {};
   try {
     const r = await withTimeout(messagingFetch(tab.id, `${MESSAGING_BASE}${encodeURIComponent(target.uuid)}/replies`, opts), SEND_TIMEOUT_MS);
-    return { ...classifySend(r), via: "tab" };
+    return { ...classifySend(r), via: "tab", ...stage };
   } catch (e) {
     // z. B. Tab während des Sendens geschlossen – ob Vinted die Anfrage bekam, ist unbekannt.
-    return { status: "unclear", httpStatus: 0, error: String(e?.message || e), via: "tab" };
+    return { status: "unclear", httpStatus: 0, error: String(e?.message || e), via: "tab", ...stage };
+  }
+}
+
+// ---------- Angebote für die Web-App (2.9.5, 055) ----------
+// Preisanfragen im refold-Postfach beantworten (Annehmen, Ablehnen, Gegenangebot) und eigene Preisangebote senden – nur auf
+// ausdrückliche Anfrage der Web-App (Klick + Bestätigung mit Betrag), nie automatisch, nie ein zweiter Versuch.
+// Stand vor jeder Aktion: GET /api/v2/conversations/<id> im vinted.de-Tab – derselbe Aufbau, den der Server der Web-App seit
+// 040 liest: Nachrichten { entity_type: "offer_request_message" | "offer_message", entity: { offer_request_id, status, price,
+// original_price, current, user_id, transaction_id } }, transaction { id, item_id, item_ids, user_side | current_user_side,
+// seller_id }. Statuscodes 10 offen, 20 angenommen, 30 abgelehnt, 40 storniert.
+// Belege je Aufruf (Mitschnitt des Nutzers, Vinteds Website-Code, Open-Source-Projekte vinted-cli und Velo) stehen an
+// OFFER_ENDPOINTS und in vinted-webapp/claude-anleitung/055-angebote-im-chat.md. enabled: false sperrt eine Aktion,
+// BEVOR irgendetwas an Vinted geht. Die bindenden Aktionen (counter, offer, reject, accept) hat der Nutzer am 2026-10-22
+// ausdrücklich freigegeben (Marker FREISCHALTEN (055)); zum Abschalten (z. B. wenn Vinted das Format ändert) auf false setzen.
+const OFFER_ENDPOINTS = {
+  // lesend
+  state: { enabled: true, binding: false },
+  // Methode/URL: Mitschnitt (GET, 200). Antwort { seller_options: { min_price, max_price } } laut Velo.
+  options: { enabled: true, binding: false, method: "GET", url: (p) => `${ORIGIN}/api/v2/transactions/${p.tx}/offers/seller_options` },
+  // Methode/URL: Mitschnitt (POST bei jeder Eingabe, 200). Body wie Vinteds eigener Website-Code (Preis anbieten, 2026-10-22),
+  // Antwort mit total_price (Gesamtpreis des Käufers). Nur Vorschau, nicht bindend.
+  estimate: { enabled: true, binding: false, method: "POST", url: () => `${ORIGIN}/api/v2/offer/estimate_with_fees`,
+    body: (p) => ({ item_ids: p.itemIds.map(Number), offer_price: { amount: p.price, currency_code: p.currency }, fees: ["buyer_protection"] }) },
+  // bindend. Methode/URL: Mitschnitt (POST, 200). Body laut vinted-cli; analog zu Vinteds { offer_request: { price, currency } }.
+  counter: { enabled: true /* FREISCHALTEN (055) */, binding: true, needsRequest: true, method: "POST", url: (p) => `${ORIGIN}/api/v2/transactions/${p.tx}/offers`,
+    body: (p) => ({ offer: { price: p.price, currency: p.currency } }) },
+  offer: { enabled: true /* FREISCHALTEN (055) */, binding: true, needsRequest: false, method: "POST", url: (p) => `${ORIGIN}/api/v2/transactions/${p.tx}/offers`,
+    body: (p) => ({ offer: { price: p.price, currency: p.currency } }) },
+  // Methode/URL: Mitschnitt (PUT, 200) und vinted-cli; ohne Body.
+  reject: { enabled: true /* FREISCHALTEN (055) */, binding: true, needsRequest: true, method: "PUT", url: (p) => `${ORIGIN}/api/v2/transactions/${p.tx}/offer_requests/${p.req}/reject`, body: null },
+  // vinted-cli und Velo (unabhängig voneinander), Muster wie reject; ohne Body. In refold noch nicht live ausgeführt.
+  accept: { enabled: true /* FREISCHALTEN (055) */, binding: true, needsRequest: true, method: "PUT", url: (p) => `${ORIGIN}/api/v2/transactions/${p.tx}/offer_requests/${p.req}/accept`, body: null },
+};
+/** Freigeschaltete Aktionen (die Web-App zeigt gesperrte Knöpfe als solche). */
+const offerCaps = () => Object.keys(OFFER_ENDPOINTS).filter((k) => OFFER_ENDPOINTS[k].enabled === true);
+
+const OFFER_STATUS = { 10: "pending", 20: "accepted", 30: "rejected", 40: "cancelled" };
+const OFFER_PRICE_RE = /^\d{1,5}(\.\d{1,2})?$/;
+const ID_RE = /^\d{1,20}$/;
+const REQUEST_KEY_RE = /^[A-Za-z0-9-]{8,64}$/;
+const OFFER_TIMEOUT_MS = 25000;
+const OFFER_RESULT_TTL_MS = 30 * 60 * 1000;
+
+const idStr = (v) => (v == null || v === "" ? null : ID_RE.test(String(v)) ? String(v) : null);
+const shortStr = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : v == null ? "" : String(v).slice(0, n));
+const cents = (v) => Math.round(Number(v) * 100);
+/** "12.0" | 12 | { amount, currency_code } → { amount, currency } (Währung notfalls aus dem Nachbarfeld currency). */
+function money(p, currency) {
+  if (p && typeof p === "object") {
+    const a = String(p.amount ?? "");
+    return a && Number.isFinite(Number(a)) ? { amount: a, currency: shortStr(p.currency_code ?? p.currency ?? currency, 3) } : null;
+  }
+  return p != null && p !== "" && Number.isFinite(Number(p)) ? { amount: String(p), currency: shortStr(currency, 3) } : null;
+}
+/** Statuscode → pending | accepted | rejected | cancelled | unknown (Wörter werden auch verstanden). */
+function offerState(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (OFFER_STATUS[s]) return OFFER_STATUS[s];
+  return Object.values(OFFER_STATUS).includes(s) ? s : "unknown";
+}
+
+/**
+ * Angebote und Transaktion einer Unterhaltung – nur Zahlen, Status und Ja/Nein, keine Namen oder Texte.
+ * Versteht den Aufbau von /api/v2/conversations (entity_type + entity) und des Messaging-Dienstes (message_type + data.entity).
+ */
+function extractDeal(json, me) {
+  const root = json && typeof json === "object" ? json : {};
+  const c = root.conversation && typeof root.conversation === "object" ? root.conversation : root;
+  const tx = c.transaction && typeof c.transaction === "object" ? c.transaction : {};
+  const list = Array.isArray(c.messages) ? c.messages : Array.isArray(c.thread?.messages) ? c.thread.messages : Array.isArray(root.messages) ? root.messages : [];
+  const offers = [];
+  const types = {};
+  for (const m of list) {
+    if (!m || typeof m !== "object") continue;
+    const type = shortStr(m.entity_type || m.message_type || "", 40);
+    types[type] = (types[type] || 0) + 1;
+    if (!/offer/i.test(type)) continue;
+    const e = (m.entity && typeof m.entity === "object" && m.entity) || (m.data && typeof m.data === "object" && (m.data.entity || m.data)) || {};
+    const kind = /request/i.test(type) ? "offer_request" : "offer";
+    const user = idStr(e.user_id);
+    offers.push({
+      kind, type,
+      offerRequestId: idStr(e.offer_request_id ?? (kind === "offer_request" ? e.id : null)),
+      offerId: kind === "offer" ? idStr(e.offer_id ?? e.id) : null,
+      transactionId: idStr(e.transaction_id),
+      status: shortStr(String(e.status ?? ""), 20), state: offerState(e.status),
+      statusTitle: shortStr(e.status_title, 80), priceLabel: shortStr(e.price_label, 40),
+      price: money(e.price, e.currency), originalPrice: money(e.original_price, e.currency),
+      current: e.current === true ? true : e.current === false ? false : null,
+      priceFixed: e.price_fixed === true,
+      mine: me && user ? user === me : null,
+      createdAt: m.created_at_ts ?? m.created_at ?? e.created_at ?? null,
+    });
+  }
+  const itemIds = (Array.isArray(tx.item_ids) && tx.item_ids.length ? tx.item_ids : [tx.item_id]).map(idStr).filter(Boolean).slice(0, 20);
+  const userSide = shortStr(tx.user_side ?? tx.current_user_side ?? "", 20).toLowerCase();
+  const sellerId = idStr(tx.seller_id);
+  // Rolle: laut Vinted (user_side / seller_id); sonst gilt: Preisanfragen schickt nur der Käufer an den Verkäufer.
+  const seller = userSide ? userSide === "seller" : sellerId && me ? sellerId === me : offers.some((o) => o.kind === "offer_request" && o.mine === false) ? true : null;
+  const currency = offers.map((o) => o.price && o.price.currency).find(Boolean) || (money(tx.offer_price) || {}).currency || null;
+  return {
+    id: idStr(c.id), offers, transactionId: idStr(tx.id) || offers.map((o) => o.transactionId).find(Boolean) || null,
+    itemIds, seller, currency, allowReply: c.allow_reply !== false, types,
+  };
+}
+/** Was die Web-App bekommt (ohne die Typen-Zählung). */
+const dealSnapshot = (d) => (d ? { offers: d.offers, transactionId: d.transactionId, itemIds: d.itemIds, seller: d.seller, currency: d.currency, allowReply: d.allowReply } : null);
+
+/** Antwort auf Zahlen/Ja-Nein/kurze Codes reduziert (seller_options, estimate_with_fees) – keine Namen, Texte, URLs. */
+function numbersOnly(v, key = "", depth = 0) {
+  if (depth > 5) return undefined;
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => numbersOnly(x, key, depth + 1)).filter((x) => x !== undefined);
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const [k, x] of Object.entries(v)) { const r = numbersOnly(x, k, depth + 1); if (r !== undefined) o[k] = r; }
+    return o;
+  }
+  if (typeof v === "number" || typeof v === "boolean" || v == null) return v;
+  const s = String(v);
+  if (/^-?\d+(\.\d+)?$/.test(s)) return s;
+  if (/currency|code|status|type|kind|label|title|message|error/i.test(key) && !/https?:|@/.test(s)) return s.slice(0, 120);
+  return undefined;
+}
+
+/** HTTP-Ergebnis einer Vinted-Anfrage → Fehlercode für die Web-App (sicher nichts passiert). */
+function vintedFail(r) {
+  if (!r || !r.status) return "network";
+  if (r.status === 401) return "not-logged-in";
+  if (r.status === 403) return "blocked";
+  if (r.status === 404) return "conversation-not-found";
+  if (r.status === 429) return "rate-limited";
+  return `vinted-${r.status}`;
+}
+
+/** Unterhaltung frisch laden (GET /api/v2/conversations/<id> im Tab) und prüfen, dass es genau diese ist. */
+async function loadDeal(tabId, conv, me) {
+  const r = await withTimeout(messagingFetch(tabId, `${ORIGIN}/api/v2/conversations/${encodeURIComponent(conv)}`), RESOLVE_TIMEOUT_MS);
+  if (!r || !r.ok || !r.json) return { fail: { status: "failed", error: vintedFail(r), httpStatus: r ? r.status : 0 } };
+  const deal = extractDeal(r.json, me);
+  if (deal.id !== conv) return { fail: { status: "failed", error: "conversation-not-found" } };
+  return { deal };
+}
+
+/** Eine bindende Aktion nur für den Verkäufer, auf die richtige Transaktion und ein offenes Angebot mit unverändertem Preis. */
+function offerGuard(action, deal, msg) {
+  const ep = OFFER_ENDPOINTS[action];
+  if (!deal.transactionId) return "no-transaction";
+  const expectTx = idStr(msg?.transactionId);
+  if (expectTx && expectTx !== deal.transactionId) return "conversation-changed";
+  if (deal.seller !== true) return "not-seller";
+  if (!deal.allowReply) return "reply-not-allowed";
+  if (!ep.needsRequest) return null;
+  const req = idStr(msg?.offerRequestId);
+  const o = req && deal.offers.find((x) => x.kind === "offer_request" && x.offerRequestId === req);
+  if (!o) return "offer-not-found";
+  if (o.state !== "pending" || o.current === false) return "offer-not-open";
+  if (o.mine !== false) return "offer-is-mine";
+  if (!o.price || cents(o.price.amount) !== cents(msg?.expectedPrice)) return "price-changed";
+  return null;
+}
+
+/**
+ * Ist die Aktion im neu geladenen Stand zu sehen? ok | not-visible | other | price-mismatch | unavailable.
+ * Annehmen ⇒ Anfrage angenommen; Ablehnen ⇒ abgelehnt/storniert; Angebot ⇒ neues eigenes Angebot mit genau diesem Preis.
+ */
+function offerAfterCheck(action, before, after, p) {
+  if (!after) return "unavailable";
+  if (action === "accept" || action === "reject") {
+    const o = after.offers.find((x) => x.kind === "offer_request" && x.offerRequestId === p.req);
+    if (!o || o.state === "pending" || o.state === "unknown") return "not-visible";
+    if (action === "accept") return o.state === "accepted" ? "ok" : "other";
+    return o.state === "rejected" || o.state === "cancelled" ? "ok" : "other";
+  }
+  const key = (x) => x.offerId || `${x.createdAt}|${x.price ? x.price.amount : ""}`;
+  const known = new Set(before.offers.filter((x) => x.kind === "offer").map(key));
+  const fresh = after.offers.filter((x) => x.kind === "offer" && x.mine !== false && !known.has(key(x)));
+  if (!fresh.length) return "not-visible";
+  return fresh.some((x) => x.price && cents(x.price.amount) === cents(p.price)) ? "ok" : "price-mismatch";
+}
+
+// Doppelschutz: dieselbe Anfrage (requestKey der Web-App) wird nie zweimal an Vinted geschickt – das gespeicherte Ergebnis
+// kommt zurück. Dazu je Unterhaltung höchstens eine Aktion gleichzeitig. Gemerkt im Speicher und in chrome.storage.session
+// (überlebt einen Neustart des Service Workers, nicht des Browsers).
+const offerResults = new Map();
+const offerBusy = new Set();
+async function rememberedOffer(key) {
+  const now = Date.now();
+  for (const [k, v] of offerResults) if (now - v.at > OFFER_RESULT_TTL_MS) offerResults.delete(k);
+  if (offerResults.has(key)) return offerResults.get(key).result;
+  try {
+    const { offerResults: stored } = await chrome.storage.session.get("offerResults");
+    const hit = stored && stored[key];
+    if (hit && now - hit.at <= OFFER_RESULT_TTL_MS) return hit.result;
+  } catch { /* ohne Speicher nur im Speicher gemerkt */ }
+  return null;
+}
+async function rememberOffer(key, result) {
+  const now = Date.now();
+  offerResults.set(key, { at: now, result });
+  try {
+    const { offerResults: stored } = await chrome.storage.session.get("offerResults");
+    const next = Object.fromEntries(Object.entries(stored || {}).filter(([, v]) => v && now - v.at <= OFFER_RESULT_TTL_MS));
+    next[key] = { at: now, result };
+    await chrome.storage.session.set({ offerResults: next });
+  } catch { /* leer */ }
+}
+
+async function webappOffer(sender, msg) {
+  if (!webappAllowed(sender)) return { status: "failed", error: "not-allowed" };
+  const action = String(msg?.action || "");
+  const ep = OFFER_ENDPOINTS[action];
+  if (!ep) return { status: "failed", error: "bad-action" };
+  if (ep.enabled !== true) return { status: "failed", error: "not-enabled", caps: offerCaps() };
+  const conv = String(msg?.conv ?? "");
+  if (!ID_RE.test(conv)) return { status: "failed", error: "bad-conversation" };
+  const price = msg?.price == null ? null : String(msg.price);
+  if ((action === "counter" || action === "offer" || action === "estimate") && (!price || !OFFER_PRICE_RE.test(price) || cents(price) <= 0)) return { status: "failed", error: "bad-price" };
+  const currency = /^[A-Z]{3}$/.test(String(msg?.currency || "")) ? String(msg.currency) : null;
+
+  // ---- lesend: Zustand, Verkäufer-Optionen, Gebührenvorschau
+  if (!ep.binding) {
+    const prep = await prepareTab(msg);
+    if (prep.fail) return prep.fail;
+    if (action === "state") {
+      const loaded = await loadDeal(prep.tab.id, conv, prep.me);
+      if (loaded.fail) return loaded.fail;
+      const d = loaded.deal;
+      // Angebotsnachrichten da, aber nichts lesbar ⇒ nur die Typen (keine Inhalte) als Hinweis auf ein geändertes Format.
+      const diag = !d.offers.length && Object.keys(d.types).some((t) => /offer/i.test(t)) ? { messageTypes: d.types } : undefined;
+      return { status: "ok", ...dealSnapshot(d), caps: offerCaps(), diag };
+    }
+    const tx = idStr(msg?.transactionId);
+    if (!tx) return { status: "failed", error: "no-transaction" };
+    const itemIds = (Array.isArray(msg?.itemIds) ? msg.itemIds : []).map(idStr).filter(Boolean).slice(0, 20);
+    if (action === "estimate" && !itemIds.length) return { status: "failed", error: "no-item" };
+    const p = { tx, price, itemIds, currency: currency || "EUR" };
+    const r = await withTimeout(messagingFetch(prep.tab.id, ep.url(p), ep.method === "GET" ? null : { method: ep.method, body: ep.body(p) }), OFFER_TIMEOUT_MS);
+    if (!r || !r.ok) return { status: "failed", error: vintedFail(r), httpStatus: r ? r.status : 0 };
+    return { status: "ok", data: numbersOnly(r.json) };
+  }
+
+  // ---- bindend
+  const requestKey = String(msg?.requestKey || "");
+  if (!REQUEST_KEY_RE.test(requestKey)) return { status: "failed", error: "bad-request-key" };
+  const earlier = await rememberedOffer(requestKey);
+  if (earlier) return { ...earlier, repeated: true };
+  if (offerBusy.has(conv)) return { status: "failed", error: "busy" };
+  offerBusy.add(conv);
+  try {
+    // Vor der Aktion: alles, was hier scheitert, hat Vinted nichts geschickt.
+    const prep = await prepareTab(msg);
+    if (prep.fail) return prep.fail;
+    const { tab, me } = prep;
+    const loaded = await loadDeal(tab.id, conv, me);
+    if (loaded.fail) return loaded.fail;
+    const before = loaded.deal;
+    const why = offerGuard(action, before, msg);
+    if (why) return { status: "failed", error: why, ...dealSnapshot(before) };
+    const req = ep.needsRequest ? before.offers.find((x) => x.kind === "offer_request" && x.offerRequestId === idStr(msg.offerRequestId)) : null;
+    const p = { tx: before.transactionId, req: req ? req.offerRequestId : null, price: price ? (cents(price) / 100).toFixed(2) : null,
+      currency: (req && req.price && req.price.currency) || before.currency || currency || "EUR" };
+
+    let res;
+    try {
+      const r = await withTimeout(messagingFetch(tab.id, ep.url(p), { method: ep.method, body: ep.body ? ep.body(p) : undefined }), OFFER_TIMEOUT_MS);
+      res = classifySend(r);
+      if (r && r.status === 403) res = { status: "failed", httpStatus: 403, error: "blocked" };
+      // 2xx mit HTML statt JSON (z. B. eine Prüfseite): nicht als Erfolg werten, der Abgleich unten entscheidet.
+      if (res.status === "sent" && r && r.json == null && /<html/i.test(r.text || "")) res = { status: "unclear", httpStatus: r.status, error: "unerwartete Antwort von Vinted" };
+    } catch (e) {
+      res = { status: "unclear", httpStatus: 0, error: String(e?.message || e) };
+    }
+    // Neuen Stand laden (wie die Website) und prüfen, ob die Aktion dort zu sehen ist. Nur lesend – nie ein zweiter Versuch.
+    let after = null;
+    try { const again = await loadDeal(tab.id, conv, me); after = again.deal || null; } catch { /* leer */ }
+    const afterCheck = offerAfterCheck(action, before, after, p);
+    let result;
+    if (res.status === "sent") result = { status: "confirmed", httpStatus: res.httpStatus, afterCheck, after: dealSnapshot(after) };
+    else if (res.status === "unclear" && afterCheck === "ok") result = { status: "confirmed", httpStatus: res.httpStatus, afterCheck, resolvedBy: "after-check", after: dealSnapshot(after) };
+    else result = { ...res, afterCheck, after: dealSnapshot(after) };
+    await rememberOffer(requestKey, result);
+    return result;
+  } finally {
+    offerBusy.delete(conv);
   }
 }
 
