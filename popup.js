@@ -101,7 +101,27 @@ async function showApp(user) {
   $("user-email").textContent = user?.email || "unbekannt";
   $("avatar").textContent = (user?.email || "?").slice(0, 1);
   setMsg($("app-msg"), "");
-  await Promise.all([renderVinted(), renderAccounts()]);
+  await Promise.all([renderMonth(), renderVinted(), renderAccounts()]);
+}
+
+// 2.9.7 (Web-App 060): Umsatz und Gewinn (nach Betriebskosten) des laufenden Monats über alle Konten – rechnet der Server
+// genau wie die Übersicht im Dashboard; hier nur anzeigen.
+const EUR = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+async function renderMonth() {
+  try {
+    const { summary } = await authedRequest("/api/extension/summary");
+    $("month-label").textContent = summary?.label || "Diesen Monat";
+    $("month-revenue").textContent = EUR.format(Number(summary?.revenue) || 0);
+    const profit = Number(summary?.profit) || 0;
+    $("month-profit").textContent = EUR.format(profit);
+    $("month-profit").classList.toggle("is-neg", profit < 0);
+    const missing = Number(summary?.profitMissing) || 0;
+    $("month-hint").textContent = missing ? `${missing === 1 ? "1 Verkauf" : `${missing} Verkäufe`} ohne zugeordneten Einkauf – Gewinn dafür nicht enthalten.` : "";
+  } catch (err) {
+    if (err?.kind === "expired") return backToLogin(err.message);
+    $("month-revenue").textContent = "–"; $("month-profit").textContent = "–";
+    $("month-hint").textContent = "Übersicht gerade nicht verfügbar.";
+  }
 }
 
 async function renderVinted() {
