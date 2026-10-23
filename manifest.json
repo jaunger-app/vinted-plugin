@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "refold",
-  "version": "2.9.4",
+  "version": "2.9.7",
   "description": "Verbindet deine Vinted-Anmeldung im Browser mit deinem refold-Dashboard. Anmeldung mit deinem refold-Konto.",
   "permissions": [
     "scripting",

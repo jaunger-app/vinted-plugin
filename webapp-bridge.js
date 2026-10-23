@@ -35,7 +35,16 @@
     // 2.9.1: Anmeldung von der Website übernehmen (Seite „Erweiterung verbinden“, auch für Google-Konten) – nur auf Klick dort;
     // der Hintergrund prüft Absender und bestätigt die Sitzung selbst beim Server, bevor er sie speichert.
     if (d.type === "ext-session") send({ type: "webappSession", session: d.session }, (r) => reply({ type: "ext-session", id: d.id, ...r }));
-    if (d.type === "send-reply") send({ type: "webappSend", conv: String(d.conv || ""), body: String(d.body || ""), expectUserId: String(d.expectUserId || ""), otherUserId: String(d.otherUserId || "") }, (r) => reply({ type: "send-reply", id: d.id, ...r }));
+    // 2.9.5 (055): Angebote – Zustand lesen bzw. eine bestätigte Aktion; der Hintergrund prüft Absender, Konto, Angebot und Preis.
+    if (d.type === "offer-action") send({
+      type: "webappOffer", action: String(d.action || ""), conv: String(d.conv || ""), expectUserId: String(d.expectUserId || ""),
+      offerRequestId: String(d.offerRequestId || ""), expectedPrice: d.expectedPrice == null ? null : String(d.expectedPrice),
+      price: d.price == null ? null : String(d.price), transactionId: String(d.transactionId || ""), currency: String(d.currency || ""),
+      itemIds: Array.isArray(d.itemIds) ? d.itemIds.slice(0, 20).map(String) : [], requestKey: String(d.requestKey || ""),
+    }, (r) => reply({ type: "offer-action", id: d.id, ...r }));
+    // 2.9.6 (057): optionaler Bildanhang (data:-URL) – der Hintergrund prüft Freigabe, Format und Größe.
+    if (d.type === "send-reply") send({ type: "webappSend", conv: String(d.conv || ""), body: String(d.body || ""), expectUserId: String(d.expectUserId || ""), otherUserId: String(d.otherUserId || ""),
+      photo: typeof d.photo === "string" ? d.photo : null }, (r) => reply({ type: "send-reply", id: d.id, ...r }));
   });
 
   if (document.documentElement) document.documentElement.dataset.vintedExt = VERSION;

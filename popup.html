@@ -57,6 +57,15 @@
       <button type="button" class="btn btn-quiet btn-sm" id="logout">Abmelden</button>
     </div>
 
+    <!-- 2.9.7 (Web-App 060): Mini-Übersicht – nur Umsatz und Gewinn des laufenden Monats, alle Konten -->
+    <div class="block month" id="month">
+      <p class="label" id="month-label">Diesen Monat</p>
+      <div class="stats">
+        <div class="stat"><span class="stat-label">Umsatz</span><span class="stat-value" id="month-revenue">–</span></div>
+        <div class="stat"><span class="stat-label">Gewinn</span><span class="stat-value" id="month-profit">–</span></div>
+      </div>
+      <p class="hint" id="month-hint"></p>
+    </div>
     <div class="block">
       <p class="label">Vinted im Browser</p>
       <p class="state"><span class="dot" id="vinted-dot"></span><span id="vinted-text">wird geprüft …</span></p>

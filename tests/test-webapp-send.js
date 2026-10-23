@@ -13,8 +13,8 @@ const MSG = "https://api.vinted.de/messaging/main/conversations/";
 // als [[uuid, gegenüber], …]; Gegenüber der Test-Unterhaltung ist "7"
 const INBOX = "https://api.vinted.de/messaging/main/inbox";
 function makeEnv(jar, { tab = true, reply = { ok: true, status: 201, json: {} }, refreshWorks = false, apiUser = null,
-  convs = { [UUID]: { core: 123 } }, pages = [[[UUID, "7"]]] } = {}) {
-  const calls = { posts: [], refresh: 0, api: 0, gets: [], scans: 0 };
+  convs = { [UUID]: { core: 123 } }, pages = [[[UUID, "7"]]], upload = { status: 200, json: { id: 9, temp_uuid: "T-1", photo_temp_uuid: "P-1", code: 0 } } } = {}) {
+  const calls = { posts: [], refresh: 0, api: 0, gets: [], scans: 0, uploads: [] };
   const ev = () => ({ addListener() {} });
   const area = () => ({ get: async () => ({}), set: async () => {}, remove: async () => {} });
   const chrome = {
@@ -24,7 +24,9 @@ function makeEnv(jar, { tab = true, reply = { ok: true, status: 201, json: {} },
     alarms: { get: async () => null, create() {}, onAlarm: ev() },
     declarativeNetRequest: { updateSessionRules: async () => {} },
     tabs: { query: async () => (tab ? [{ id: 5, status: "complete", url: "https://www.vinted.de/" }] : []), get: async (id) => ({ id, status: "complete" }), create: async () => ({ id: 9 }), remove: async () => {} },
-    scripting: { executeScript: async ({ args }) => {
+    scripting: { executeScript: async ({ args, func }) => {
+      // (058) Bild-Upload: die echte Seitenfunktion läuft gegen einen nachgebauten Browser – geprüft wird das Formular.
+      if (String(args[0]).endsWith("/api/v2/photos")) return [{ result: await func(...args) }];
       if (args[0] === "/web/api/auth/refresh") { calls.refresh++; if (refreshWorks) jar.access_token_web = jwt(100); return [{ result: { ok: refreshWorks, status: refreshWorks ? 200 : 401, json: {} } }]; }
       if (args[0] === "/api/v2/users/current") { calls.api++; return [{ result: apiUser ? { ok: true, status: 200, json: { user: { id: apiUser } } } : { ok: false, status: 401, json: null } }]; }
       if (String(args[0]).startsWith(INBOX)) {
@@ -48,11 +50,21 @@ function makeEnv(jar, { tab = true, reply = { ok: true, status: 201, json: {} },
       remove: async () => {},
     },
   };
-  const fetch = async () => ({ ok: true, status: 200, text: async () => "", headers: { get: () => null } });
+  const fetch = async (url, init) => {
+    if (String(url).startsWith("data:")) return globalThis.fetch(url);
+    if (String(url).endsWith("/api/v2/photos")) {
+      const form = init.body;
+      calls.uploads.push({ method: init.method, fields: [...form.keys()], type: form.get("photo[type]"), fileType: form.get("photo[file]")?.type, csrf: !!init.headers["X-CSRF-Token"] });
+      if (upload === "throw") throw new Error("Netz weg");
+      return new Response(upload.json == null ? "kein json" : JSON.stringify(upload.json), { status: upload.status });
+    }
+    return { ok: true, status: 200, text: async () => "", headers: { get: () => null } };
+  };
+  const document = { documentElement: { innerHTML: '"CSRF_TOKEN":"01a149d2-15d2-78f7-9f9c-778288936057"' }, querySelector: () => null, cookie: "anon_id=abc" };
   const fast = (f, ms) => setTimeout(f, (ms || 0) >= 10000 ? 150 : 1); // Zeitgrenzen und Pausen im Test verkürzen
-  const ctx = { chrome, fetch, crypto: globalThis.crypto, TextEncoder, Uint8Array, atob: (s) => Buffer.from(s, "base64").toString("binary"), console: { warn() {}, log() {} }, setTimeout: fast, Date, Math, JSON, Promise, Map, Set, URL, parseInt, parseFloat, Number, String, Error, Object, Array, Infinity };
+  const ctx = { chrome, fetch, document, FormData, Blob, Response, RegExp, crypto: globalThis.crypto, TextEncoder, Uint8Array, atob: (s) => Buffer.from(s, "base64").toString("binary"), console: { warn() {}, log() {} }, setTimeout: fast, Date, Math, JSON, Promise, Map, Set, URL, parseInt, parseFloat, Number, String, Error, Object, Array, Infinity };
   vm.createContext(ctx);
-  vm.runInContext(src + "\n;globalThis.__api = { webappSend, classifySend, convUuids };", ctx);
+  vm.runInContext(src + "\n;globalThis.__api = { webappSend, classifySend, convUuids, IMAGE_SEND, sendCaps };", ctx);
   return { calls, api: ctx.__api };
 }
 const sender = { id: "ext", url: "http://localhost:3000/dashboard/postfach" };
@@ -150,6 +162,61 @@ const msg = (o = {}) => ({ conv: "123", body: " Hallo ", expectUserId: "100", ot
   e = makeEnv({ refresh_token_web: "R" }, { apiUser: 200 });
   assert.strictEqual((await e.api.webappSend(sender, msg())).error, "wrong-account");
   assert.strictEqual(e.calls.posts.length, 0);
+
+  // (057/058) Bildanhang. Ausgeliefert gesperrt (idField fehlt, O1 offen) ⇒ weder Bild noch Text, kein einziger Aufruf.
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+  const JPG = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+  e = makeEnv(jar());
+  assert.deepStrictEqual({ ...e.api.sendCaps() }, { image: false });
+  assert.deepStrictEqual([e.api.IMAGE_SEND.photoType, e.api.IMAGE_SEND.idField], ["user_msg", null]);
+  let p = await e.api.webappSend(sender, msg({ photo: PNG }));
+  assert.deepStrictEqual([p.status, p.error], ["failed", "image-not-enabled"]);
+  e.api.IMAGE_SEND.enabled = true; // an, aber ohne idField ⇒ weiter gesperrt
+  assert.strictEqual((await e.api.webappSend(sender, msg({ body: "", photo: PNG }))).error, "image-not-enabled");
+  assert.deepStrictEqual([e.calls.posts.length, e.calls.gets.length, e.calls.scans, e.calls.uploads.length], [0, 0, 0, 0]);
+
+  // Im Test freigeschaltet: Formular wie beobachtet (user_msg + Datei, KEINE eigene temp_uuid), ID genau aus idField.
+  const enableImg = (env, field) => { env.api.IMAGE_SEND.enabled = true; env.api.IMAGE_SEND.idField = field; };
+  for (const [field, want] of [["temp_uuid", "T-1"], ["photo_temp_uuid", "P-1"]]) {
+    e = makeEnv(jar(), { reply: { ok: true, status: 201, json: {} } }); enableImg(e, field);
+    p = await e.api.webappSend(sender, msg({ body: "", photo: PNG }));
+    assert.deepStrictEqual([p.status, p.stage], ["sent", "reply"], field);
+    assert.deepStrictEqual(e.calls.uploads[0], { method: "POST", fields: ["photo[type]", "photo[file]"], type: "user_msg", fileType: "image/png", csrf: true });
+    assert.strictEqual(JSON.stringify(e.calls.posts[0].body), JSON.stringify({ content: null, is_personal_data_sharing_check_skipped: false, photo_temp_uuids: [want] }), field);
+  }
+  // Bild mit Text; JPEG wird angenommen (ob Vinted es nimmt: O3 offen), GIF/Link/Müll abgelehnt
+  e = makeEnv(jar(), { reply: { ok: true, status: 201, json: {} } }); enableImg(e, "photo_temp_uuid");
+  p = await e.api.webappSend(sender, msg({ photo: JPG }));
+  assert.strictEqual(p.status, "sent");
+  assert.deepStrictEqual([e.calls.uploads[0].fileType, e.calls.posts[0].body.content], ["image/jpeg", "Hallo"]);
+  for (const bad of ["data:image/gif;base64,R0lG", "https://x/y.png", "data:image/png;base64,$$$"]) {
+    assert.strictEqual((await e.api.webappSend(sender, msg({ photo: bad }))).error, "bad-photo");
+  }
+  // Upload scheitert (4xx, 5xx, kein JSON, ID fehlt/leer, Netz) ⇒ photo-upload-failed, KEIN Reply
+  for (const upload of [{ status: 400, json: { code: 99 } }, { status: 500, json: null }, { status: 200, json: null }, { status: 200, json: { temp_uuid: "T-1" } },
+    { status: 200, json: { photo_temp_uuid: "  " } }, "throw"]) {
+    e = makeEnv(jar(), { upload }); enableImg(e, "photo_temp_uuid");
+    p = await e.api.webappSend(sender, msg({ photo: PNG }));
+    assert.deepStrictEqual([p.status, p.error, p.stage, e.calls.posts.length], ["failed", "photo-upload-failed", "upload", 0], JSON.stringify(upload));
+    assert.ok(!/P-1|T-1/.test(JSON.stringify(p)), "keine ID in der Antwort");
+  }
+  // ID unter json.photo wird gefunden
+  e = makeEnv(jar(), { upload: { status: 200, json: { photo: { photo_temp_uuid: "P-9" } } }, reply: { ok: true, status: 201, json: {} } }); enableImg(e, "photo_temp_uuid");
+  assert.strictEqual((await e.api.webappSend(sender, msg({ photo: PNG }))).status, "sent");
+  assert.strictEqual(JSON.stringify(e.calls.posts[0].body.photo_temp_uuids), '["P-9"]');
+  // Senden 500 nach erfolgreichem Upload ⇒ unklar, genau ein Upload und ein Reply, nie wiederholt
+  e = makeEnv(jar(), { reply: { ok: false, status: 500, json: null } }); enableImg(e, "photo_temp_uuid");
+  p = await e.api.webappSend(sender, msg({ photo: PNG }));
+  assert.deepStrictEqual([p.status, p.httpStatus, p.stage, e.calls.uploads.length, e.calls.posts.length], ["unclear", 500, "reply", 1, 1]);
+  // Senden 4xx ⇒ failed
+  e = makeEnv(jar(), { reply: { ok: false, status: 422, json: { message: "nein" } } }); enableImg(e, "photo_temp_uuid");
+  assert.strictEqual((await e.api.webappSend(sender, msg({ photo: PNG }))).status, "failed");
+
+  // ohne Bild: unverändert (Text, photo_temp_uuids null, kein Upload)
+  e = makeEnv(jar());
+  assert.strictEqual((await e.api.webappSend(sender, msg({ body: "  " }))).error, "bad-body");
+  assert.strictEqual((await e.api.webappSend(sender, msg())).status, "sent");
+  assert.strictEqual(JSON.stringify([e.calls.posts[0].body.content, e.calls.posts[0].body.photo_temp_uuids, e.calls.uploads.length]), '["Hallo",null,0]');
 
   console.log("test-webapp-send: ok");
 })().catch((err) => { console.error(err); process.exit(1); });
